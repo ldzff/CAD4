@@ -2010,6 +2010,26 @@ namespace RobTeach.Views
                         var r = circle.Radius;
                         return (cX - r, cY - r, cX + r, cY + r);
 
+                    case DxfLwPolyline lwPolyline:
+                        if (lwPolyline.Vertices == null || !lwPolyline.Vertices.Any())
+                            return null;
+
+                        var polyMinX = double.MaxValue;
+                        var polyMinY = double.MaxValue;
+                        var polyMaxX = double.MinValue;
+                        var polyMaxY = double.MinValue;
+
+                        foreach (var vertex in lwPolyline.Vertices)
+                        {
+                            polyMinX = Math.Min(polyMinX, vertex.X);
+                            polyMinY = Math.Min(polyMinY, vertex.Y);
+                            polyMaxX = Math.Max(polyMaxX, vertex.X);
+                            polyMaxY = Math.Max(polyMaxY, vertex.Y);
+                            // TODO: Add handling for bulge to include arc segment bounds if bulge is non-zero.
+                            // For now, this handles straight segments of the polyline.
+                        }
+                        return (polyMinX, polyMinY, polyMaxX, polyMaxY);
+
                     default:
                         return null;
                 }
