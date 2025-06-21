@@ -19,7 +19,7 @@ using System.IO;
 using System.Text; // Added for Encoding
 
 // using netDxf.Header; // No longer needed with IxMilia.Dxf
-// using System.Windows.Threading; // Was for optional Dispatcher.Invoke, not currently used.
+using System.Windows.Threading; // Was for optional Dispatcher.Invoke, now used.
 // using System.Text.RegularExpressions; // Was for optional IP validation, not currently used.
 
 namespace RobTeach.Views
@@ -1048,9 +1048,15 @@ namespace RobTeach.Views
                     }
 
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
-                    PerformFitToView();
-                    StatusTextBlock.Text = $"Loaded: {Path.GetFileName(_currentDxfFilePath)}. Click shapes to select.";
-                    isConfigurationDirty = false;
+                    // Call PerformFitToView after layout has had a chance to update
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        PerformFitToView();
+                        StatusTextBlock.Text = $"Loaded: {Path.GetFileName(_currentDxfFilePath)}. Click shapes to select.";
+                        isConfigurationDirty = false; // Set dirty flag only after successful load and fit
+                    }), DispatcherPriority.Background);
+                    // Note: isConfigurationDirty is set to false inside the dispatcher action.
+                    // If it needed to be set immediately, it would be here, but it's better tied to the completion of fitting.
                     UpdateDirectionIndicator(); // Update after loading and potential default selections
                     UpdateOrderNumberLabels();
                 } else { StatusTextBlock.Text = "DXF loading cancelled."; }
