@@ -104,6 +104,9 @@ namespace RobTeach.Views
             CadCanvas.MouseMove += CadCanvas_MouseMove; // For active panning
             CadCanvas.MouseUp += CadCanvas_MouseUp;     // For ending pan
 
+            // Attach event handler for canvas resize
+            CadCanvas.SizeChanged += CadCanvas_SizeChanged;
+
             // Attach event handlers for nozzle checkboxes
             // UpperNozzleOnCheckBox.Checked += UpperNozzleOnCheckBox_Changed; // Removed
             // UpperNozzleOnCheckBox.Unchecked += UpperNozzleOnCheckBox_Changed; // Removed
@@ -924,6 +927,19 @@ namespace RobTeach.Views
         private void MainWindow_Closing(object sender, CancelEventArgs e)
         {
             _modbusService.Disconnect(); // Clean up Modbus connection.
+        }
+
+        /// <summary>
+        /// Handles the SizeChanged event of the CadCanvas.
+        /// Calls PerformFitToView to rescale and center the DXF content when the canvas size changes.
+        /// </summary>
+        private void CadCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            // Check if the canvas has a valid size and if a DXF document is loaded
+            if (e.NewSize.Width > 0 && e.NewSize.Height > 0 && _currentDxfDocument != null)
+            {
+                PerformFitToView();
+            }
         }
 
         /// <summary>
