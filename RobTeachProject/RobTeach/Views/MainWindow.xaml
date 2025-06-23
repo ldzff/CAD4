@@ -29,14 +29,14 @@
         </Grid.RowDefinitions>
 
         <!-- Load DXF and Actions Button Bar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5" Background="{StaticResource PanelBackgroundBrush}">
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5,5,5,0" Background="{StaticResource PanelBackgroundBrush}">
             <Button Content="Load DXF" Click="LoadDxfButton_Click" Name="LoadDxfButton" Padding="5" Margin="0,0,5,0"/>
             <Button Content="Save Config" Name="SaveConfigButton" Click="SaveConfigButton_Click" Padding="5" Margin="0,0,5,0"/>
             <Button Content="Load Config" Name="LoadConfigButton" Click="LoadConfigButton_Click" Padding="5" Margin="0,0,5,0"/>
             <Button Content="Fit to View" Click="FitToViewButton_Click" Name="FitToViewButton" Padding="5" Margin="0,0,0,0"/>
         </StackPanel>
 
-        <Canvas Grid.Row="1" Name="CadCanvas" Background="{StaticResource CanvasBackgroundBrush}" Margin="5" ClipToBounds="True"/>
+        <Canvas Grid.Row="1" Name="CadCanvas" Background="{StaticResource CanvasBackgroundBrush}" Margin="5,0,5,5" ClipToBounds="True"/>
 
         <!-- Configuration and Action Panel -->
         <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="5" VerticalAlignment="Top" Background="{StaticResource PanelBackgroundBrush}">
