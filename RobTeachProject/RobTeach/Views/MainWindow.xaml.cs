@@ -1706,12 +1706,12 @@ namespace RobTeach.Views
             _scaleTransform.ScaleX = scale;
             _scaleTransform.ScaleY = scale; // Maintain aspect ratio
 
-            // Center the content
-            double targetTranslateX = (canvasWidth - (contentWidth * scale)) / 2.0 - (_dxfBoundingBox.X * scale);
-            double targetTranslateY = (canvasHeight - (contentHeight * scale)) / 2.0 - (_dxfBoundingBox.Y * scale);
+            // Align content to the left, center vertically
+            double targetTranslateX = -(_dxfBoundingBox.X * scale); // Align left edge of content with left edge of canvas
+            double targetTranslateY = (canvasHeight - (contentHeight * scale)) / 2.0 - (_dxfBoundingBox.Y * scale); // Center vertically
             _translateTransform.X = targetTranslateX;
             _translateTransform.Y = targetTranslateY;
-            Debug.WriteLine($"[DEBUG] PerformFitToView: TargetTranslateX={targetTranslateX}, TargetTranslateY={targetTranslateY}");
+            Debug.WriteLine($"[DEBUG] PerformFitToView: TargetTranslateX (Left Aligned)={targetTranslateX}, TargetTranslateY (Centered)={targetTranslateY}");
 
             StatusTextBlock.Text = "View fitted to content.";
             Debug.WriteLine("[DEBUG] PerformFitToView: Completed.");
