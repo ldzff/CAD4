@@ -21,6 +21,7 @@ using System.Text; // Added for Encoding
 // using netDxf.Header; // No longer needed with IxMilia.Dxf
 using System.Windows.Threading; // Was for optional Dispatcher.Invoke, now used.
 // using System.Text.RegularExpressions; // Was for optional IP validation, not currently used.
+using MahApps.Metro.Controls; // Added for MetroWindow
 
 namespace RobTeach.Views
 {
@@ -28,7 +29,7 @@ namespace RobTeach.Views
     /// Interaction logic for MainWindow.xaml. This is the main window of the RobTeach application,
     /// handling UI events, displaying CAD data, managing configurations, and initiating Modbus communication.
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : MetroWindow // Changed from Window to MetroWindow
     {
         // Services used by the MainWindow
         private readonly CadService _cadService = new CadService();
