@@ -1934,17 +1934,92 @@ namespace RobTeach.Views
                     newPassTrajectories.Add(trajectoryToKeepOrAdd);
                 }
 
-                // Determine if selection actually changed by comparing the sets of entities
-                var currentSelectedDxfEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
-                var newSelectedDxfEntitiesAfterMarquee = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
+                bool isCtrlPressed = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp: CtrlPressed={isCtrlPressed}, Marquee Hits={marqueeHitEntities.Count}");
 
-                if (!currentSelectedDxfEntities.SetEquals(newSelectedDxfEntitiesAfterMarquee))
+                if (isCtrlPressed)
                 {
-                    selectionStateChanged = true;
+                    // Mode: Subtract from selection (Ctrl + Marquee)
+                    int itemsRemovedCount = 0;
+                    // Iterate backwards to allow safe removal from the list
+                    for (int i = currentPass.Trajectories.Count - 1; i >= 0; i--)
+                    {
+                        Trajectory trajectory = currentPass.Trajectories[i];
+                        if (marqueeHitEntities.Contains(trajectory.OriginalDxfEntity))
+                        {
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Ctrl+Marquee): Removing {trajectory.OriginalDxfEntity.GetType().Name}");
+                            currentPass.Trajectories.RemoveAt(i);
+                            itemsRemovedCount++;
+                        }
+                    }
+                    if (itemsRemovedCount > 0)
+                    {
+                        selectionStateChanged = true;
+                    }
                 }
-                // else: selectionStateChanged remains false if the sets are identical (though it was initialized to false).
+                else
+                {
+                    // Mode: Replace selection (Normal Marquee)
+                    List<Trajectory> newPassTrajectories = new List<Trajectory>();
+                    foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
+                    {
+                        // Try to find if this entity was already part of an existing trajectory to preserve its settings
+                        Trajectory trajectoryToKeepOrAdd = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == hitDxfEntity);
 
-                currentPass.Trajectories = newPassTrajectories; // Assign the new list regardless of change, to reflect the marquee's definitive selection.
+                        if (trajectoryToKeepOrAdd == null) // It's a new selection for this pass
+                        {
+                            trajectoryToKeepOrAdd = new Trajectory
+                            {
+                                OriginalDxfEntity = hitDxfEntity,
+                                EntityType = hitDxfEntity.GetType().Name,
+                                IsReversed = false // Default
+                            };
+                            // Populate geometric properties for the new trajectory
+                            switch (hitDxfEntity)
+                            {
+                                case DxfLine line:
+                                    trajectoryToKeepOrAdd.PrimitiveType = "Line";
+                                    trajectoryToKeepOrAdd.LineStartPoint = line.P1;
+                                    trajectoryToKeepOrAdd.LineEndPoint = line.P2;
+                                    break;
+                                case DxfArc arc:
+                                    trajectoryToKeepOrAdd.PrimitiveType = "Arc";
+                                    trajectoryToKeepOrAdd.ArcCenter = arc.Center;
+                                    trajectoryToKeepOrAdd.ArcRadius = arc.Radius;
+                                    trajectoryToKeepOrAdd.ArcStartAngle = arc.StartAngle;
+                                    trajectoryToKeepOrAdd.ArcEndAngle = arc.EndAngle;
+                                    trajectoryToKeepOrAdd.ArcNormal = arc.Normal;
+                                    break;
+                                case DxfCircle circle:
+                                    trajectoryToKeepOrAdd.PrimitiveType = "Circle";
+                                    trajectoryToKeepOrAdd.CircleCenter = circle.Center;
+                                    trajectoryToKeepOrAdd.CircleRadius = circle.Radius;
+                                    trajectoryToKeepOrAdd.CircleNormal = circle.Normal;
+                                    break;
+                                default:
+                                    trajectoryToKeepOrAdd.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
+                                    break;
+                            }
+                            PopulateTrajectoryPoints(trajectoryToKeepOrAdd);
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Adding new trajectory for {hitDxfEntity.GetType().Name}");
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Keeping existing trajectory for {hitDxfEntity.GetType().Name}");
+                        }
+                        newPassTrajectories.Add(trajectoryToKeepOrAdd);
+                    }
+
+                    // Determine if selection actually changed by comparing the sets of entities
+                    var currentSelectedDxfEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
+                    var newSelectedDxfEntitiesAfterMarquee = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
+
+                    if (!currentSelectedDxfEntities.SetEquals(newSelectedDxfEntitiesAfterMarquee))
+                    {
+                        selectionStateChanged = true;
+                    }
+                    currentPass.Trajectories = newPassTrajectories; // Assign the new list
+                }
 
                 if (selectionStateChanged)
                 {
