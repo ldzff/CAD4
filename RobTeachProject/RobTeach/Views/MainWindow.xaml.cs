@@ -1887,41 +1887,41 @@ namespace RobTeach.Views
                 // Removed outer declaration and population of newPassTrajectories.
                 // This logic is now handled within the 'else' block for Replace Mode.
 
-                bool isCtrlPressed = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
-                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp: CtrlPressed={isCtrlPressed}, Marquee Hits={marqueeHitEntities.Count}");
+                bool isShiftPressed = Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp: ShiftPressed={isShiftPressed}, Marquee Hits={marqueeHitEntities.Count}");
 
-                if (isCtrlPressed)
+                if (isShiftPressed)
                 {
-                    // Mode: Subtract from selection (Ctrl + Marquee)
-                    int itemsRemovedCount = 0;
-                    // Iterate backwards to allow safe removal from the list
+                    // Mode: Deselect within marquee (Shift + Marquee)
+                    // Remove any currently selected items that are within the marquee.
+                    int itemsDeselectedCount = 0;
                     for (int i = currentPass.Trajectories.Count - 1; i >= 0; i--)
                     {
                         Trajectory trajectory = currentPass.Trajectories[i];
                         if (marqueeHitEntities.Contains(trajectory.OriginalDxfEntity))
                         {
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Ctrl+Marquee): Removing {trajectory.OriginalDxfEntity.GetType().Name}");
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Shift+Marquee): Deselecting {trajectory.OriginalDxfEntity.GetType().Name}");
                             currentPass.Trajectories.RemoveAt(i);
-                            itemsRemovedCount++;
+                            itemsDeselectedCount++;
                         }
                     }
-                    if (itemsRemovedCount > 0)
+                    if (itemsDeselectedCount > 0)
                     {
                         selectionStateChanged = true;
                     }
                 }
                 else
                 {
-                    // Mode: Replace selection (Normal Marquee)
-                    List<Trajectory> newPassTrajectories = new List<Trajectory>();
+                    // Mode: Additive selection (Normal Marquee)
+                    // Add any items from the marquee that are not already selected.
+                    int itemsAddedCount = 0;
                     foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
                     {
-                        // Try to find if this entity was already part of an existing trajectory to preserve its settings
-                        Trajectory trajectoryToKeepOrAdd = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == hitDxfEntity);
-
-                        if (trajectoryToKeepOrAdd == null) // It's a new selection for this pass
+                        bool alreadySelected = currentPass.Trajectories.Any(t => t.OriginalDxfEntity == hitDxfEntity);
+                        if (!alreadySelected)
                         {
-                            trajectoryToKeepOrAdd = new Trajectory
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Normal Marquee - Additive): Adding {hitDxfEntity.GetType().Name}");
+                            var newTrajectory = new Trajectory
                             {
                                 OriginalDxfEntity = hitDxfEntity,
                                 EntityType = hitDxfEntity.GetType().Name,
@@ -1931,47 +1931,37 @@ namespace RobTeach.Views
                             switch (hitDxfEntity)
                             {
                                 case DxfLine line:
-                                    trajectoryToKeepOrAdd.PrimitiveType = "Line";
-                                    trajectoryToKeepOrAdd.LineStartPoint = line.P1;
-                                    trajectoryToKeepOrAdd.LineEndPoint = line.P2;
+                                    newTrajectory.PrimitiveType = "Line";
+                                    newTrajectory.LineStartPoint = line.P1;
+                                    newTrajectory.LineEndPoint = line.P2;
                                     break;
                                 case DxfArc arc:
-                                    trajectoryToKeepOrAdd.PrimitiveType = "Arc";
-                                    trajectoryToKeepOrAdd.ArcCenter = arc.Center;
-                                    trajectoryToKeepOrAdd.ArcRadius = arc.Radius;
-                                    trajectoryToKeepOrAdd.ArcStartAngle = arc.StartAngle;
-                                    trajectoryToKeepOrAdd.ArcEndAngle = arc.EndAngle;
-                                    trajectoryToKeepOrAdd.ArcNormal = arc.Normal;
+                                    newTrajectory.PrimitiveType = "Arc";
+                                    newTrajectory.ArcCenter = arc.Center;
+                                    newTrajectory.ArcRadius = arc.Radius;
+                                    newTrajectory.ArcStartAngle = arc.StartAngle;
+                                    newTrajectory.ArcEndAngle = arc.EndAngle;
+                                    newTrajectory.ArcNormal = arc.Normal;
                                     break;
                                 case DxfCircle circle:
-                                    trajectoryToKeepOrAdd.PrimitiveType = "Circle";
-                                    trajectoryToKeepOrAdd.CircleCenter = circle.Center;
-                                    trajectoryToKeepOrAdd.CircleRadius = circle.Radius;
-                                    trajectoryToKeepOrAdd.CircleNormal = circle.Normal;
+                                    newTrajectory.PrimitiveType = "Circle";
+                                    newTrajectory.CircleCenter = circle.Center;
+                                    newTrajectory.CircleRadius = circle.Radius;
+                                    newTrajectory.CircleNormal = circle.Normal;
                                     break;
                                 default:
-                                    trajectoryToKeepOrAdd.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
+                                    newTrajectory.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
                                     break;
                             }
-                            PopulateTrajectoryPoints(trajectoryToKeepOrAdd);
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Adding new trajectory for {hitDxfEntity.GetType().Name}");
+                            PopulateTrajectoryPoints(newTrajectory);
+                            currentPass.Trajectories.Add(newTrajectory);
+                            itemsAddedCount++;
                         }
-                        else
-                        {
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Keeping existing trajectory for {hitDxfEntity.GetType().Name}");
-                        }
-                        newPassTrajectories.Add(trajectoryToKeepOrAdd);
                     }
-
-                    // Determine if selection actually changed by comparing the sets of entities
-                    var currentSelectedDxfEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
-                    var newSelectedDxfEntitiesAfterMarquee = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
-
-                    if (!currentSelectedDxfEntities.SetEquals(newSelectedDxfEntitiesAfterMarquee))
+                    if (itemsAddedCount > 0)
                     {
                         selectionStateChanged = true;
                     }
-                    currentPass.Trajectories = newPassTrajectories; // Assign the new list
                 }
 
                 if (selectionStateChanged)
