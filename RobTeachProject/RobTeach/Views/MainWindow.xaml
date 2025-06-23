@@ -130,4 +130,4 @@
         </Grid>
         <!-- Viewbox removed -->
     </ScrollViewer>
-</Window>
+</mah:MetroWindow>
