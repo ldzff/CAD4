@@ -1095,6 +1095,7 @@ namespace RobTeach.Views
         {
             Trace.WriteLine("++++ OnCadEntityClicked Fired ++++");
             Trace.Flush();
+            Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Sender is {sender?.GetType().Name}");
             Trajectory trajectoryToSelect = null; // Declare at wider scope
 
             // Detailed check for the main condition
@@ -1115,7 +1116,20 @@ namespace RobTeach.Views
 
                 var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape];
                 Trace.WriteLine($"  -- Retrieved dxfEntity: {dxfEntity?.GetType().Name ?? "null"}");
+                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Retrieved DxfEntity: {dxfEntity?.GetType().Name}");
                 Trace.Flush();
+
+                Point clickPosCanvas = e.GetPosition(CadCanvas);
+                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position on Canvas = {clickPosCanvas}");
+                Point clickPosDxf = _transformGroup.Inverse.Transform(clickPosCanvas);
+                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Click position transformed to DXF Coords = {clickPosDxf}");
+
+                Rect entityDxfBounds = GetDxfEntityRect(dxfEntity); // Helper method to be added
+                Debug.WriteLine($"[DEBUG] OnCadEntityClicked: DXF Entity Bounds = {entityDxfBounds}");
+                if (entityDxfBounds != Rect.Empty)
+                {
+                    Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Does transformed click fall within entity bounds? {entityDxfBounds.Contains(clickPosDxf)}");
+                }
                 
                 // Logic for adding/removing from current spray pass's trajectories
                 Trace.WriteLine($"  -- Checking current pass index: {_currentConfiguration.CurrentPassIndex}, SprayPasses count: {_currentConfiguration.SprayPasses?.Count ?? 0}");
@@ -1810,6 +1824,8 @@ namespace RobTeach.Views
                 selectionRectangleUI = null;
 
                 StatusTextBlock.Text = "Selection processed."; // Or clear
+                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): finalSelectionRect (Canvas UI Coords) = {finalSelectionRect}");
+                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): _scaleTransform=({_scaleTransform.ScaleX},{_scaleTransform.ScaleY}), _translateTransform=({_translateTransform.X},{_translateTransform.Y})");
 
                 // Small drag check (if it was more of a click)
                 const double clickThreshold = 5.0;
@@ -1842,15 +1858,21 @@ namespace RobTeach.Views
                     if (canvasToWorldTransform == null) continue;
 
                     Rect selectionRectInWorldCoords = canvasToWorldTransform.TransformBounds(finalSelectionRect);
-                    Rect shapeGeometryBounds = wpfShape.RenderedGeometry.Bounds;
+                    DxfEntity dxfEntityForBounds = _wpfShapeToDxfEntityMap[wpfShape]; // Get entity for bounds calculation
+                    Rect shapeGeometryBounds = GetDxfEntityRect(dxfEntityForBounds); // Use helper for consistent DXF Coords
+                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Checking entity {dxfEntityForBounds.GetType().Name}. DXF Bounds (from GetDxfEntityRect)={shapeGeometryBounds}. Transformed Selection Rect (DXF Coords)={selectionRectInWorldCoords}");
 
-                    if (selectionRectInWorldCoords.IntersectsWith(shapeGeometryBounds))
+                    bool intersects = (shapeGeometryBounds != Rect.Empty) && selectionRectInWorldCoords.IntersectsWith(shapeGeometryBounds);
+                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Intersects = {intersects}");
+
+                    if (intersects)
                     {
                         DxfEntity dxfEntity = _wpfShapeToDxfEntityMap[wpfShape];
                         var existingTrajectory = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == dxfEntity);
 
                         if (existingTrajectory == null) // Entity is not selected, so select it
                         {
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Selecting entity {dxfEntity.GetType().Name}");
                             var newTrajectory = new Trajectory
                             {
                                 OriginalDxfEntity = dxfEntity,
@@ -1888,6 +1910,7 @@ namespace RobTeach.Views
                         }
                         else // Entity is already selected, so deselect it
                         {
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Deselecting entity {dxfEntity.GetType().Name}");
                             currentPass.Trajectories.Remove(existingTrajectory);
                             selectionStateChanged = true;
                         }
@@ -1896,6 +1919,7 @@ namespace RobTeach.Views
 
                 if (selectionStateChanged)
                 {
+                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Selection state changed. Refreshing UI.");
                     isConfigurationDirty = true;
                     RefreshCurrentPassTrajectoriesListBox();
                     RefreshCadCanvasHighlights();
@@ -2308,6 +2332,26 @@ namespace RobTeach.Views
             if (minX > maxX || minY > maxY) return Rect.Empty; // Should not happen with valid inputs
 
             return new Rect(new Point(minX, minY), new Point(maxX, maxY));
+        }
+
+        /// <summary>
+        /// Helper method to get the bounding box of a DxfEntity as a Rect.
+        /// </summary>
+        /// <param name="entity">The DXF entity.</param>
+        /// <returns>A Rect representing the entity's bounding box in DXF coordinates, or Rect.Empty if bounds cannot be determined.</returns>
+        private Rect GetDxfEntityRect(DxfEntity entity)
+        {
+            if (entity == null)
+                return Rect.Empty;
+
+            var boundsTuple = CalculateEntityBoundsSimple(entity);
+            if (boundsTuple.HasValue)
+            {
+                var (minX, minY, maxX, maxY) = boundsTuple.Value;
+                if (maxX < minX || maxY < minY) return Rect.Empty; // Invalid bounds
+                return new Rect(minX, minY, maxX - minX, maxY - minY);
+            }
+            return Rect.Empty;
         }
     }
 }
