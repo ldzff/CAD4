@@ -1884,55 +1884,8 @@ namespace RobTeach.Views
 
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Found {marqueeHitEntities.Count} entities in marquee.");
 
-                List<Trajectory> newPassTrajectories = new List<Trajectory>();
-                foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
-                {
-                    // Try to find if this entity was already part of an existing trajectory to preserve its settings
-                    Trajectory trajectoryToKeepOrAdd = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == hitDxfEntity);
-
-                    if (trajectoryToKeepOrAdd == null) // It's a new selection
-                    {
-                        trajectoryToKeepOrAdd = new Trajectory
-                        {
-                            OriginalDxfEntity = hitDxfEntity,
-                            EntityType = hitDxfEntity.GetType().Name,
-                            IsReversed = false // Default
-                        };
-                        // Populate geometric properties for the new trajectory
-                        switch (hitDxfEntity)
-                        {
-                            case DxfLine line:
-                                trajectoryToKeepOrAdd.PrimitiveType = "Line";
-                                trajectoryToKeepOrAdd.LineStartPoint = line.P1;
-                                trajectoryToKeepOrAdd.LineEndPoint = line.P2;
-                                break;
-                            case DxfArc arc:
-                                trajectoryToKeepOrAdd.PrimitiveType = "Arc";
-                                trajectoryToKeepOrAdd.ArcCenter = arc.Center;
-                                trajectoryToKeepOrAdd.ArcRadius = arc.Radius;
-                                trajectoryToKeepOrAdd.ArcStartAngle = arc.StartAngle;
-                                trajectoryToKeepOrAdd.ArcEndAngle = arc.EndAngle;
-                                trajectoryToKeepOrAdd.ArcNormal = arc.Normal;
-                                break;
-                            case DxfCircle circle:
-                                trajectoryToKeepOrAdd.PrimitiveType = "Circle";
-                                trajectoryToKeepOrAdd.CircleCenter = circle.Center;
-                                trajectoryToKeepOrAdd.CircleRadius = circle.Radius;
-                                trajectoryToKeepOrAdd.CircleNormal = circle.Normal;
-                                break;
-                            default:
-                                trajectoryToKeepOrAdd.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
-                                break;
-                        }
-                        PopulateTrajectoryPoints(trajectoryToKeepOrAdd);
-                        Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Adding new trajectory for {hitDxfEntity.GetType().Name}");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Keeping existing trajectory for {hitDxfEntity.GetType().Name}");
-                    }
-                    newPassTrajectories.Add(trajectoryToKeepOrAdd);
-                }
+                // Removed outer declaration and population of newPassTrajectories.
+                // This logic is now handled within the 'else' block for Replace Mode.
 
                 bool isCtrlPressed = Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
                 Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp: CtrlPressed={isCtrlPressed}, Marquee Hits={marqueeHitEntities.Count}");
