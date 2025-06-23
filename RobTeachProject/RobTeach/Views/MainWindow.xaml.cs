@@ -1846,78 +1846,120 @@ namespace RobTeach.Views
                 }
                 var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
                 bool selectionStateChanged = false;
+                List<DxfEntity> marqueeHitEntities = new List<DxfEntity>();
 
-                foreach (var wpfShape in _wpfShapeToDxfEntityMap.Keys)
+                RectangleGeometry selectionGeometry = new RectangleGeometry(finalSelectionRect);
+                GeometryHitTestParameters parameters = new GeometryHitTestParameters(selectionGeometry);
+
+                HitTestResultCallback hitTestCallback = (HitTestResult result) =>
                 {
-                    if (wpfShape.Visibility != Visibility.Visible || wpfShape.RenderedGeometry == null || wpfShape.RenderedGeometry.IsEmpty())
+                    if (result is GeometryHitTestResult geometryResult)
                     {
-                        continue;
-                    }
-
-                    GeneralTransform canvasToWorldTransform = _transformGroup.Inverse;
-                    if (canvasToWorldTransform == null) continue;
-
-                    Rect selectionRectInWorldCoords = canvasToWorldTransform.TransformBounds(finalSelectionRect);
-                    DxfEntity dxfEntityForBounds = _wpfShapeToDxfEntityMap[wpfShape]; // Get entity for bounds calculation
-                    Rect shapeGeometryBounds = GetDxfEntityRect(dxfEntityForBounds); // Use helper for consistent DXF Coords
-                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Checking entity {dxfEntityForBounds.GetType().Name}. DXF Bounds (from GetDxfEntityRect)={shapeGeometryBounds}. Transformed Selection Rect (DXF Coords)={selectionRectInWorldCoords}");
-
-                    bool intersects = (shapeGeometryBounds != Rect.Empty) && selectionRectInWorldCoords.IntersectsWith(shapeGeometryBounds);
-                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Intersects = {intersects}");
-
-                    if (intersects)
-                    {
-                        DxfEntity dxfEntity = _wpfShapeToDxfEntityMap[wpfShape];
-                        var existingTrajectory = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == dxfEntity);
-
-                        if (existingTrajectory == null) // Entity is not selected, so select it
+                        if (geometryResult.VisualHit is System.Windows.Shapes.Shape hitShape)
                         {
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Selecting entity {dxfEntity.GetType().Name}");
-                            var newTrajectory = new Trajectory
+                            if (_wpfShapeToDxfEntityMap.TryGetValue(hitShape, out DxfEntity hitEntity))
                             {
-                                OriginalDxfEntity = dxfEntity,
-                                EntityType = dxfEntity.GetType().Name,
-                                IsReversed = false
-                            };
-                            switch (dxfEntity)
-                            {
-                                case DxfLine line:
-                                    newTrajectory.PrimitiveType = "Line";
-                                    newTrajectory.LineStartPoint = line.P1;
-                                    newTrajectory.LineEndPoint = line.P2;
-                                    break;
-                                case DxfArc arc:
-                                    newTrajectory.PrimitiveType = "Arc";
-                                    newTrajectory.ArcCenter = arc.Center;
-                                    newTrajectory.ArcRadius = arc.Radius;
-                                    newTrajectory.ArcStartAngle = arc.StartAngle;
-                                    newTrajectory.ArcEndAngle = arc.EndAngle;
-                                    newTrajectory.ArcNormal = arc.Normal;
-                                    break;
-                                case DxfCircle circle:
-                                    newTrajectory.PrimitiveType = "Circle";
-                                    newTrajectory.CircleCenter = circle.Center;
-                                    newTrajectory.CircleRadius = circle.Radius;
-                                    newTrajectory.CircleNormal = circle.Normal;
-                                    break;
-                                default:
-                                    newTrajectory.PrimitiveType = dxfEntity.GetType().Name;
-                                    break;
+                                if (!marqueeHitEntities.Contains(hitEntity))
+                                {
+                                    marqueeHitEntities.Add(hitEntity);
+                                    Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Hit DxfEntity {hitEntity.GetType().Name}");
+                                }
                             }
-                            PopulateTrajectoryPoints(newTrajectory);
-                            currentPass.Trajectories.Add(newTrajectory);
-                            selectionStateChanged = true;
-                        }
-                        else // Entity is already selected, so deselect it
-                        {
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Deselecting entity {dxfEntity.GetType().Name}");
-                            currentPass.Trajectories.Remove(existingTrajectory);
-                            selectionStateChanged = true;
                         }
                     }
+                    return HitTestResultBehavior.Continue;
+                };
+
+                // Optional: HitTestFilterCallback to quickly prune visuals not in _wpfShapeToDxfEntityMap.Keys
+                // For now, let the result callback handle it.
+                VisualTreeHelper.HitTest(CadCanvas, null, hitTestCallback, parameters);
+
+                Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee HitTest): Found {marqueeHitEntities.Count} entities in marquee.");
+
+                List<Trajectory> newPassTrajectories = new List<Trajectory>();
+                foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
+                {
+                    // Try to find if this entity was already part of an existing trajectory to preserve its settings
+                    Trajectory trajectoryToKeepOrAdd = currentPass.Trajectories.FirstOrDefault(t => t.OriginalDxfEntity == hitDxfEntity);
+
+                    if (trajectoryToKeepOrAdd == null) // It's a new selection
+                    {
+                        trajectoryToKeepOrAdd = new Trajectory
+                        {
+                            OriginalDxfEntity = hitDxfEntity,
+                            EntityType = hitDxfEntity.GetType().Name,
+                            IsReversed = false // Default
+                        };
+                        // Populate geometric properties for the new trajectory
+                        switch (hitDxfEntity)
+                        {
+                            case DxfLine line:
+                                trajectoryToKeepOrAdd.PrimitiveType = "Line";
+                                trajectoryToKeepOrAdd.LineStartPoint = line.P1;
+                                trajectoryToKeepOrAdd.LineEndPoint = line.P2;
+                                break;
+                            case DxfArc arc:
+                                trajectoryToKeepOrAdd.PrimitiveType = "Arc";
+                                trajectoryToKeepOrAdd.ArcCenter = arc.Center;
+                                trajectoryToKeepOrAdd.ArcRadius = arc.Radius;
+                                trajectoryToKeepOrAdd.ArcStartAngle = arc.StartAngle;
+                                trajectoryToKeepOrAdd.ArcEndAngle = arc.EndAngle;
+                                trajectoryToKeepOrAdd.ArcNormal = arc.Normal;
+                                break;
+                            case DxfCircle circle:
+                                trajectoryToKeepOrAdd.PrimitiveType = "Circle";
+                                trajectoryToKeepOrAdd.CircleCenter = circle.Center;
+                                trajectoryToKeepOrAdd.CircleRadius = circle.Radius;
+                                trajectoryToKeepOrAdd.CircleNormal = circle.Normal;
+                                break;
+                            default:
+                                trajectoryToKeepOrAdd.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
+                                break;
+                        }
+                        PopulateTrajectoryPoints(trajectoryToKeepOrAdd);
+                        Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Adding new trajectory for {hitDxfEntity.GetType().Name}");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee Replace): Keeping existing trajectory for {hitDxfEntity.GetType().Name}");
+                    }
+                    newPassTrajectories.Add(trajectoryToKeepOrAdd);
                 }
 
-                if (selectionStateChanged)
+                // Check if the new list of trajectories is different from the old one
+                // This is a simple check by count and sequence of OriginalDxfEntity.
+                // For a more robust check, consider sequence and actual object references if order matters.
+                if (currentPass.Trajectories.Count != newPassTrajectories.Count ||
+                    !currentPass.Trajectories.SequenceEqual(newPassTrajectories)) // SequenceEqual might be too strict if order can change but items are same
+                {
+                    // A simpler way to check if different, sufficient for now:
+                    // Convert both to sets of OriginalDxfEntity and compare.
+                    var currentOriginalEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
+                    var newOriginalEntities = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
+
+                    if (!currentOriginalEntities.SetEquals(newOriginalEntities))
+                    {
+                        selectionStateChanged = true;
+                    }
+                    // If sets are equal, but order might have changed, we might still want to set selectionStateChanged.
+                    // For "Replace" semantics, if the content of the selection changes, it's a change.
+                    // The above SetEquals check correctly captures if the set of selected items has changed.
+
+                    if(selectionStateChanged || currentPass.Trajectories.Count != newPassTrajectories.Count) // ensure if count changed, it's dirty
+                    {
+                       //This check is a bit redundant now due to SetEquals, but good for clarity
+                       //If the set of entities is different, or their count is different, it's a change.
+                       //A more robust check for list difference if order matters and objects are preserved:
+                       // bool listsIdentical = currentPass.Trajectories.Count == newPassTrajectories.Count &&
+                       //                        currentPass.Trajectories.Zip(newPassTrajectories, (t1, t2) => t1 == t2).All(isSame => isSame);
+                       // if(!listsIdentical) selectionStateChanged = true;
+                       // For now, if the resulting set of DxfEntities is different, we update.
+                    }
+                }
+                 currentPass.Trajectories = newPassTrajectories; // Replace the old list
+                 if(selectionStateChanged || currentOriginalEntities.Count != newOriginalEntities.Count) selectionStateChanged = true; // Recalculate based on set difference after assignment
+
+                if (selectionStateChanged) // This flag should be true if trajectories list was actually modified.
                 {
                     Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Selection state changed. Refreshing UI.");
                     isConfigurationDirty = true;
