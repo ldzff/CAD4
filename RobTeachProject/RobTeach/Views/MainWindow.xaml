@@ -16,7 +16,7 @@
         <SolidColorBrush x:Key="DefaultTextBrush" Color="#FFE0E0E0"/>
         <SolidColorBrush x:Key="CanvasBackgroundBrush" Color="#FF424242"/>
         <SolidColorBrush x:Key="BorderBrush" Color="#FF555555"/>
-    </Window.Resources>
+    </mah:MetroWindow.Resources>
     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                   Background="{StaticResource WindowBackgroundBrush}"
                   Foreground="{StaticResource DefaultTextBrush}">
