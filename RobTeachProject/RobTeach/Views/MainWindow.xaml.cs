@@ -935,6 +935,7 @@ namespace RobTeach.Views
         /// </summary>
         private void CadCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
         {
+            Debug.WriteLine($"[DEBUG] CadCanvas_SizeChanged: NewSize=({e.NewSize.Width}, {e.NewSize.Height}), DXF Loaded={_currentDxfDocument != null}");
             // Check if the canvas has a valid size and if a DXF document is loaded
             if (e.NewSize.Width > 0 && e.NewSize.Height > 0 && _currentDxfDocument != null)
             {
@@ -1049,11 +1050,14 @@ namespace RobTeach.Views
 
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                     // Call PerformFitToView after layout has had a chance to update
+                    Debug.WriteLine($"[DEBUG] LoadDxfButton_Click: Scheduling PerformFitToView via Dispatcher. CanvasSize=({CadCanvas.ActualWidth}, {CadCanvas.ActualHeight})");
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
+                        Debug.WriteLine($"[DEBUG] LoadDxfButton_Click (Dispatcher): Calling PerformFitToView. CanvasSize=({CadCanvas.ActualWidth}, {CadCanvas.ActualHeight})");
                         PerformFitToView();
                         StatusTextBlock.Text = $"Loaded: {Path.GetFileName(_currentDxfFilePath)}. Click shapes to select.";
                         isConfigurationDirty = false; // Set dirty flag only after successful load and fit
+                        Debug.WriteLine("[DEBUG] LoadDxfButton_Click (Dispatcher): PerformFitToView completed.");
                     }), DispatcherPriority.Background);
                     // Note: isConfigurationDirty is set to false inside the dispatcher action.
                     // If it needed to be set immediately, it would be here, but it's better tied to the completion of fitting.
@@ -1644,8 +1648,60 @@ namespace RobTeach.Views
             return new System.Windows.Rect(minX, minY, maxX - minX, maxY - minY);
         }
 
-        private void FitToViewButton_Click(object sender, RoutedEventArgs e) { /* ... (No change) ... */ }
-        private void PerformFitToView() { /* ... (No change) ... */ }
+        private void FitToViewButton_Click(object sender, RoutedEventArgs e) { Debug.WriteLine("[DEBUG] FitToViewButton_Click called."); PerformFitToView(); }
+        private void PerformFitToView()
+        {
+            Debug.WriteLine("[DEBUG] PerformFitToView: Entered.");
+            Debug.WriteLine($"[DEBUG] PerformFitToView: CadCanvas.ActualWidth={CadCanvas.ActualWidth}, CadCanvas.ActualHeight={CadCanvas.ActualHeight}");
+            Debug.WriteLine($"[DEBUG] PerformFitToView: _dxfBoundingBox={_dxfBoundingBox.ToString()}");
+
+            if (_dxfBoundingBox.IsEmpty || CadCanvas.ActualWidth == 0 || CadCanvas.ActualHeight == 0)
+            {
+                Debug.WriteLine("[DEBUG] PerformFitToView: BoundingBox is empty or Canvas size is zero. Resetting transforms.");
+                // Reset to default if no content or canvas not ready
+                _scaleTransform.ScaleX = 1;
+                _scaleTransform.ScaleY = 1;
+                _translateTransform.X = 0;
+                _translateTransform.Y = 0;
+                Debug.WriteLine("[DEBUG] PerformFitToView: Exiting due to empty bounds or zero canvas size.");
+                return;
+            }
+
+            double canvasWidth = CadCanvas.ActualWidth;
+            double canvasHeight = CadCanvas.ActualHeight;
+
+            double contentWidth = _dxfBoundingBox.Width;
+            double contentHeight = _dxfBoundingBox.Height;
+
+            if (contentWidth == 0 || contentHeight == 0)
+            {
+                Debug.WriteLine("[DEBUG] PerformFitToView: ContentWidth or ContentHeight is zero. Exiting.");
+                return; // Avoid division by zero
+            }
+
+            // Calculate scale to fit content within canvas, maintaining aspect ratio
+            double scaleX = canvasWidth / contentWidth;
+            double scaleY = canvasHeight / contentHeight;
+            double scale = Math.Min(scaleX, scaleY);
+
+            // Apply a margin, e.g., 5% of the canvas dimension
+            double marginFactor = 0.95;
+            scale *= marginFactor;
+            Debug.WriteLine($"[DEBUG] PerformFitToView: Calculated scaleX={scaleX}, scaleY={scaleY}, final scale (with margin)={scale}");
+
+            _scaleTransform.ScaleX = scale;
+            _scaleTransform.ScaleY = scale; // Maintain aspect ratio
+
+            // Center the content
+            double targetTranslateX = (canvasWidth - (contentWidth * scale)) / 2.0 - (_dxfBoundingBox.X * scale);
+            double targetTranslateY = (canvasHeight - (contentHeight * scale)) / 2.0 - (_dxfBoundingBox.Y * scale);
+            _translateTransform.X = targetTranslateX;
+            _translateTransform.Y = targetTranslateY;
+            Debug.WriteLine($"[DEBUG] PerformFitToView: TargetTranslateX={targetTranslateX}, TargetTranslateY={targetTranslateY}");
+
+            StatusTextBlock.Text = "View fitted to content.";
+            Debug.WriteLine("[DEBUG] PerformFitToView: Completed.");
+        }
         private void CadCanvas_MouseWheel(object sender, MouseWheelEventArgs e) { /* ... (No change) ... */ }
         private void CadCanvas_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -2031,8 +2087,40 @@ namespace RobTeach.Views
                             polyMinY = Math.Min(polyMinY, vertex.Y);
                             polyMaxX = Math.Max(polyMaxX, vertex.X);
                             polyMaxY = Math.Max(polyMaxY, vertex.Y);
-                            // TODO: Add handling for bulge to include arc segment bounds if bulge is non-zero.
-                            // For now, this handles straight segments of the polyline.
+                        }
+
+                        // Iterate through segments for bulge handling
+                        if (lwPolyline.Vertices.Count > 1)
+                        {
+                            for (int i = 0; i < lwPolyline.Vertices.Count; i++)
+                            {
+                                var p1Vertex = lwPolyline.Vertices[i];
+                                var p2Vertex = lwPolyline.IsClosed ? lwPolyline.Vertices[(i + 1) % lwPolyline.Vertices.Count] :
+                                                                    (i < lwPolyline.Vertices.Count - 1 ? lwPolyline.Vertices[i + 1] : null);
+
+                                if (p2Vertex == null && i == lwPolyline.Vertices.Count - 1 && !lwPolyline.IsClosed)
+                                {
+                                    // Last vertex of an open polyline, already processed by initial vertex iteration.
+                                    break;
+                                }
+                                if (p2Vertex == null) continue; // Should ideally not be reached if logic is sound
+
+                                if (Math.Abs(p1Vertex.Bulge) > 1e-6) // Bulge is significant
+                                {
+                                    var arcSegBounds = GetArcSegmentBoundsFromBulge(
+                                        new Point(p1Vertex.X, p1Vertex.Y),
+                                        new Point(p2Vertex.X, p2Vertex.Y),
+                                        p1Vertex.Bulge);
+
+                                    if (arcSegBounds != Rect.Empty)
+                                    {
+                                        polyMinX = Math.Min(polyMinX, arcSegBounds.Left);
+                                        polyMinY = Math.Min(polyMinY, arcSegBounds.Top);
+                                        polyMaxX = Math.Max(polyMaxX, arcSegBounds.Right);
+                                        polyMaxY = Math.Max(polyMaxY, arcSegBounds.Bottom);
+                                    }
+                                }
+                            }
                         }
                         return (polyMinX, polyMinY, polyMaxX, polyMaxY);
 
@@ -2085,5 +2173,141 @@ namespace RobTeach.Views
 
 
         private void HandleError(Exception ex, string action) { /* ... (No change) ... */ }
+
+        /// <summary>
+        /// Calculates the bounding box of an arc segment defined by two points and a bulge value.
+        /// </summary>
+        /// <param name="p1">Start point of the arc segment.</param>
+        /// <param name="p2">End point of the arc segment.</param>
+        /// <param name="bulge">Bulge value. Positive for CCW arc, negative for CW.</param>
+        /// <returns>A Rect representing the bounding box of the arc segment, or Rect.Empty if calculation fails.</returns>
+        private Rect GetArcSegmentBoundsFromBulge(Point p1, Point p2, double bulge)
+        {
+            if (Math.Abs(bulge) < 1e-9) // Treat as a straight line segment
+            {
+                return new Rect(p1, p2);
+            }
+
+            double dx = p2.X - p1.X;
+            double dy = p2.Y - p1.Y;
+            double chordLengthSquared = dx * dx + dy * dy;
+            double chordLength = Math.Sqrt(chordLengthSquared);
+
+            if (chordLength < 1e-9) // Points are coincident
+            {
+                return new Rect(p1, p2);
+            }
+
+            // Angle of the chord vector
+            double chordAngle = Math.Atan2(dy, dx);
+
+            // Included angle of the arc segment (theta)
+            // bulge = tan(theta / 4) ==> theta = 4 * atan(bulge)
+            double includedAngle = 4.0 * Math.Atan(bulge);
+
+            // Radius of the arc
+            // R = C / (2 * sin(theta / 2))
+            double radius = chordLength / (2.0 * Math.Sin(includedAngle / 2.0));
+            if (double.IsInfinity(radius) || double.IsNaN(radius)) return new Rect(p1, p2); // Should be caught by bulge or chord checks
+
+            // Arc center calculation
+            // Midpoint of the chord
+            Point midPointChord = new Point(p1.X + dx / 2.0, p1.Y + dy / 2.0);
+
+            // Distance from chord midpoint to arc center (h)
+            // h = R * cos(theta/2) or sqrt(R^2 - (C/2)^2)
+            double h = radius * Math.Cos(includedAngle / 2.0);
+            // If bulge > 0 (CCW), center is to the "left" of chord vector P1->P2
+            // If bulge < 0 (CW), center is to the "right"
+            // The sign of bulge also affects the sign of 'h' in some formulations, here h is distance.
+            // We need to adjust the perpendicular direction based on bulge.
+
+            double perpDx = -dy / chordLength; // Normalized perpendicular vector component
+            double perpDy = dx / chordLength;  // Normalized perpendicular vector component
+
+            // For CCW arc (bulge > 0), center is (midPoint.X - h * perpDx_normalized, midPoint.Y - h * perpDy_normalized)
+            // where perp vector is (-dy, dx).
+            // If bulge is negative, the center is on the other side.
+            // Simplified: sagitta vector direction depends on bulge.
+            // Using a common formula: Pc = Pm - (R*cos(theta/2)) * PerpendicularNormalized(V_chord) * sign(bulge)
+            // Let's use a more direct center finding:
+            // Angle from midpoint of chord to center is chordAngle - PI/2 (for CCW) or + PI/2 (for CW)
+            // This 'h' can be thought of as signed based on bulge for offset direction
+            double offsetFactor = h * Math.Sign(bulge); // This might be incorrect, h is distance, sign of bulge defines concavity
+
+            Point center = new Point(
+                midPointChord.X - offsetFactor * (dy / chordLength), // perp component X scaled by h
+                midPointChord.Y + offsetFactor * (dx / chordLength)  // perp component Y scaled by h
+            );
+
+            // Start and end angles relative to the arc center
+            double startAngle = Math.Atan2(p1.Y - center.Y, p1.X - center.X);
+            double endAngle = Math.Atan2(p2.Y - center.Y, p2.Y - center.Y);
+
+            // Normalize angles to be [0, 2*PI)
+            // startAngle = (startAngle + 2 * Math.PI) % (2 * Math.PI);
+            // endAngle = (endAngle + 2 * Math.PI) % (2 * Math.PI);
+
+            // Determine sweep direction and adjust endAngle for full sweep
+            // If bulge < 0, arc is CW. If bulge > 0, arc is CCW.
+            // We want to sweep from startAngle to endAngle in the direction of the bulge.
+
+            if (bulge < 0) // Clockwise
+            {
+                if (endAngle > startAngle)
+                    startAngle += 2 * Math.PI; // Ensure sweep is CW
+            }
+            else // Counter-clockwise
+            {
+                if (endAngle < startAngle)
+                    endAngle += 2 * Math.PI; // Ensure sweep is CCW
+            }
+
+            // Initialize bounding box with start and end points
+            double minX = Math.Min(p1.X, p2.X);
+            double minY = Math.Min(p1.Y, p2.Y);
+            double maxX = Math.Max(p1.X, p2.X);
+            double maxY = Math.Max(p1.Y, p2.Y);
+
+            // Check cardinal points (0, 90, 180, 270 degrees in circle's coordinate system)
+            // if they fall within the arc segment.
+            Action<double> checkAngle = (angle) =>
+            {
+                bool angleInSweep;
+                if (bulge > 0) // CCW
+                {
+                    // Normalize angle to be relative to startAngle for CCW sweep
+                    double normalizedAngle = angle;
+                    while (normalizedAngle < startAngle) normalizedAngle += 2 * Math.PI;
+                    angleInSweep = normalizedAngle >= startAngle && normalizedAngle <= endAngle;
+                }
+                else // CW
+                {
+                    // Normalize angle to be relative to startAngle for CW sweep
+                    double normalizedAngle = angle;
+                    while (normalizedAngle > startAngle) normalizedAngle -= 2 * Math.PI;
+                    angleInSweep = normalizedAngle <= startAngle && normalizedAngle >= endAngle;
+                }
+
+                if (angleInSweep)
+                {
+                    double x = center.X + radius * Math.Cos(angle);
+                    double y = center.Y + radius * Math.Sin(angle);
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x);
+                    maxY = Math.Max(maxY, y);
+                }
+            };
+
+            checkAngle(0);                         // Point at positive X-axis from center
+            checkAngle(Math.PI / 2.0);             // Point at positive Y-axis from center
+            checkAngle(Math.PI);                   // Point at negative X-axis from center
+            checkAngle(3.0 * Math.PI / 2.0);       // Point at negative Y-axis from center
+
+            if (minX > maxX || minY > maxY) return Rect.Empty; // Should not happen with valid inputs
+
+            return new Rect(new Point(minX, minY), new Point(maxX, maxY));
+        }
     }
 }
