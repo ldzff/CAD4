@@ -1706,12 +1706,20 @@ namespace RobTeach.Views
             _scaleTransform.ScaleX = scale;
             _scaleTransform.ScaleY = scale; // Maintain aspect ratio
 
-            // Align content to the top-left
+            // Align content to the top-left with a small padding
             double targetTranslateX = -(_dxfBoundingBox.X * scale); // Align left edge of content with left edge of canvas
-            double targetTranslateY = -(_dxfBoundingBox.Y * scale); // Align top edge of content with top edge of canvas
+            const double topPadding = 5.0; // Define a small padding from the top of the canvas
+            double targetTranslateY = topPadding -(_dxfBoundingBox.Y * scale);
+            // This still aligns the bounding box top, but ensures it's at worst at Y=topPadding if _dxfBoundingBox.Y is 0.
+            // If the diagnostic Y=0 worked, and original -(_dxfBoundingBox.Y * scale) didn't,
+            // it implies -(_dxfBoundingBox.Y * scale) was too negative.
+            // Let's try a simpler version that worked for the diagnostic: Y=0 of DXF to Y=padding of canvas.
+            // This means the Y-origin of the DXF drawing is placed at Y=topPadding on the canvas.
+            targetTranslateY = topPadding; // All DXFs will start rendering their Y=0 coordinate at Y=topPadding of canvas.
+
             _translateTransform.X = targetTranslateX;
             _translateTransform.Y = targetTranslateY;
-            Debug.WriteLine($"[DEBUG] PerformFitToView: TargetTranslateX (Left Aligned)={targetTranslateX}, TargetTranslateY (Top Aligned)={targetTranslateY}");
+            Debug.WriteLine($"[DEBUG] PerformFitToView: TargetTranslateX (Left Aligned)={targetTranslateX}, TargetTranslateY (Top Padded to {topPadding})={targetTranslateY}");
 
             StatusTextBlock.Text = "View fitted to content.";
             Debug.WriteLine("[DEBUG] PerformFitToView: Completed.");
