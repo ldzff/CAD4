@@ -1926,40 +1926,19 @@ namespace RobTeach.Views
                     newPassTrajectories.Add(trajectoryToKeepOrAdd);
                 }
 
-                // Check if the new list of trajectories is different from the old one
-                // This is a simple check by count and sequence of OriginalDxfEntity.
-                // For a more robust check, consider sequence and actual object references if order matters.
-                if (currentPass.Trajectories.Count != newPassTrajectories.Count ||
-                    !currentPass.Trajectories.SequenceEqual(newPassTrajectories)) // SequenceEqual might be too strict if order can change but items are same
+                // Determine if selection actually changed by comparing the sets of entities
+                var currentSelectedDxfEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
+                var newSelectedDxfEntitiesAfterMarquee = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
+
+                if (!currentSelectedDxfEntities.SetEquals(newSelectedDxfEntitiesAfterMarquee))
                 {
-                    // A simpler way to check if different, sufficient for now:
-                    // Convert both to sets of OriginalDxfEntity and compare.
-                    var currentOriginalEntities = new HashSet<DxfEntity>(currentPass.Trajectories.Select(t => t.OriginalDxfEntity));
-                    var newOriginalEntities = new HashSet<DxfEntity>(newPassTrajectories.Select(t => t.OriginalDxfEntity));
-
-                    if (!currentOriginalEntities.SetEquals(newOriginalEntities))
-                    {
-                        selectionStateChanged = true;
-                    }
-                    // If sets are equal, but order might have changed, we might still want to set selectionStateChanged.
-                    // For "Replace" semantics, if the content of the selection changes, it's a change.
-                    // The above SetEquals check correctly captures if the set of selected items has changed.
-
-                    if(selectionStateChanged || currentPass.Trajectories.Count != newPassTrajectories.Count) // ensure if count changed, it's dirty
-                    {
-                       //This check is a bit redundant now due to SetEquals, but good for clarity
-                       //If the set of entities is different, or their count is different, it's a change.
-                       //A more robust check for list difference if order matters and objects are preserved:
-                       // bool listsIdentical = currentPass.Trajectories.Count == newPassTrajectories.Count &&
-                       //                        currentPass.Trajectories.Zip(newPassTrajectories, (t1, t2) => t1 == t2).All(isSame => isSame);
-                       // if(!listsIdentical) selectionStateChanged = true;
-                       // For now, if the resulting set of DxfEntities is different, we update.
-                    }
+                    selectionStateChanged = true;
                 }
-                 currentPass.Trajectories = newPassTrajectories; // Replace the old list
-                 if(selectionStateChanged || currentOriginalEntities.Count != newOriginalEntities.Count) selectionStateChanged = true; // Recalculate based on set difference after assignment
+                // else: selectionStateChanged remains false if the sets are identical (though it was initialized to false).
 
-                if (selectionStateChanged) // This flag should be true if trajectories list was actually modified.
+                currentPass.Trajectories = newPassTrajectories; // Assign the new list regardless of change, to reflect the marquee's definitive selection.
+
+                if (selectionStateChanged)
                 {
                     Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Marquee): Selection state changed. Refreshing UI.");
                     isConfigurationDirty = true;
