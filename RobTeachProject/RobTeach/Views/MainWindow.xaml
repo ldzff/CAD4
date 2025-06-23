@@ -21,7 +21,7 @@
         <!-- Viewbox removed -->
         <Grid MinWidth="850" MinHeight="520"> <!-- RootContentGrid with MinWidth/MinHeight -->
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <!-- Row 0 for Load DXF / Actions -->
+                <RowDefinition Height="Auto" MinHeight="35"/> <!-- Row 0 for Load DXF / Actions -->
                 <RowDefinition Height="*"/>    <!-- Row 1 for CadCanvas -->
             <RowDefinition Height="Auto"/> <!-- Row 2 for Config/Action Panel -->
             <RowDefinition Height="Auto"/> <!-- Row 3 for Modbus Panel -->
