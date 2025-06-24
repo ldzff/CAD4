@@ -1478,6 +1478,12 @@ namespace RobTeach.Views
                     }
                     // else, no valid selection or list is empty, ListBox default behavior (no selection or first item)
 
+                    // Reconcile DxfEntity instances if DXF was loaded from embedded content
+                    if (!string.IsNullOrEmpty(_currentConfiguration.DxfFileContent) && _currentDxfDocument != null)
+                    {
+                        ReconcileTrajectoryEntities(_currentConfiguration, _currentDxfDocument);
+                    }
+
                     UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI for potentially selected trajectory
                     RefreshCadCanvasHighlights(); // Update canvas highlights for the loaded pass
                     UpdateDirectionIndicator(); // Config loaded, selection might have changed
@@ -2245,6 +2251,112 @@ namespace RobTeach.Views
 
 
         private void HandleError(Exception ex, string action) { /* ... (No change) ... */ }
+
+
+        private bool PointEquals(DxfPoint p1, DxfPoint p2, double tolerance = 0.001)
+        {
+            return Math.Abs(p1.X - p2.X) < tolerance &&
+                   Math.Abs(p1.Y - p2.Y) < tolerance &&
+                   Math.Abs(p1.Z - p2.Z) < tolerance;
+        }
+
+        private bool AreEntitiesGeometricallyEquivalent(DxfEntity entity1, DxfEntity entity2, double tolerance = 0.001)
+        {
+            if (entity1 == null || entity2 == null || entity1.GetType() != entity2.GetType())
+                return false;
+
+            switch (entity1)
+            {
+                case DxfLine line1 when entity2 is DxfLine line2:
+                    return (PointEquals(line1.P1, line2.P1, tolerance) && PointEquals(line1.P2, line2.P2, tolerance)) ||
+                           (PointEquals(line1.P1, line2.P2, tolerance) && PointEquals(line1.P2, line2.P1, tolerance));
+                case DxfCircle circle1 when entity2 is DxfCircle circle2:
+                    return PointEquals(circle1.Center, circle2.Center, tolerance) && Math.Abs(circle1.Radius - circle2.Radius) < tolerance;
+                case DxfArc arc1 when entity2 is DxfArc arc2:
+                    // Normalize angles for comparison if necessary, or compare with tolerance
+                    // This basic comparison might fail if angles are e.g. 0 and 360.
+                    // A more robust comparison would involve checking points on the arc or geometric properties.
+                    return PointEquals(arc1.Center, arc2.Center, tolerance) &&
+                           Math.Abs(arc1.Radius - arc2.Radius) < tolerance &&
+                           (Math.Abs(arc1.StartAngle - arc2.StartAngle) % 360 < tolerance) &&
+                           (Math.Abs(arc1.EndAngle - arc2.EndAngle) % 360 < tolerance);
+                case DxfLwPolyline poly1 when entity2 is DxfLwPolyline poly2:
+                    if (poly1.Vertices.Count != poly2.Vertices.Count || poly1.IsClosed != poly2.IsClosed) return false;
+                    for(int i=0; i < poly1.Vertices.Count; i++)
+                    {
+                        if (poly1.Vertices[i].X != poly2.Vertices[i].X || // Using exact match for now, could add tolerance
+                            poly1.Vertices[i].Y != poly2.Vertices[i].Y ||
+                            // poly1.Vertices[i].Z != poly2.Vertices[i].Z || // LwPolyline vertices are 2D (X,Y with Z usually 0 from elevation)
+                            Math.Abs(poly1.Vertices[i].Bulge - poly2.Vertices[i].Bulge) > tolerance) // Bulge with tolerance
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                // TODO: Add other entity types as needed
+                default:
+                    Debug.WriteLine($"[WARNING] AreEntitiesGeometricallyEquivalent: Unhandled entity type {entity1.GetType().Name} for comparison.");
+                    return false;
+            }
+        }
+
+        private void ReconcileTrajectoryEntities(Models.Configuration config, DxfFile? currentDoc)
+        {
+            if (config == null || currentDoc == null || config.SprayPasses == null || !currentDoc.Entities.Any())
+            {
+                Debug.WriteLine("[DEBUG] ReconcileTrajectoryEntities: Skipping reconciliation due to null config, doc, passes, or empty document entities.");
+                return;
+            }
+
+            Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Starting. Document has {currentDoc.Entities.Count()} entities.");
+
+            // Create a list of available entities from the document to "consume" as they are matched
+            // This helps handle cases where multiple identical geometric entities might exist in the DXF,
+            // ensuring each trajectory maps to a unique live entity if possible.
+            List<DxfEntity> availableDocEntities = new List<DxfEntity>(currentDoc.Entities);
+
+            foreach (var pass in config.SprayPasses)
+            {
+                if (pass.Trajectories == null) continue;
+                for (int i = 0; i < pass.Trajectories.Count; i++)
+                {
+                    var trajectory = pass.Trajectories[i];
+                    if (trajectory.OriginalDxfEntity == null)
+                    {
+                        Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Trajectory {i} in pass '{pass.PassName}' has null OriginalDxfEntity.");
+                        continue;
+                    }
+
+                    DxfEntity? matchedEntity = null;
+                    int matchedEntityIndexInAvailableList = -1;
+
+                    for (int j = 0; j < availableDocEntities.Count; j++)
+                    {
+                        if (AreEntitiesGeometricallyEquivalent(trajectory.OriginalDxfEntity, availableDocEntities[j]))
+                        {
+                            matchedEntity = availableDocEntities[j];
+                            matchedEntityIndexInAvailableList = j;
+                            break;
+                        }
+                    }
+
+                    if (matchedEntity != null)
+                    {
+                        trajectory.OriginalDxfEntity = matchedEntity; // Update reference to the live entity from the document
+                        availableDocEntities.RemoveAt(matchedEntityIndexInAvailableList); // Remove from available to prevent re-matching
+                        Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Reconciled trajectory entity: {matchedEntity.GetType().Name}");
+                    }
+                    else
+                    {
+                        // If no match, the trajectory.OriginalDxfEntity remains the deserialized instance.
+                        // Highlighting will likely fail for this specific entity.
+                        Debug.WriteLine($"[WARNING] ReconcileTrajectoryEntities: Could not find a matching live entity for deserialized {trajectory.OriginalDxfEntity.GetType().Name}.");
+                    }
+                }
+            }
+            Debug.WriteLine("[DEBUG] ReconcileTrajectoryEntities: Finished.");
+        }
+
 
         /// <summary>
         /// Calculates the bounding box of an arc segment defined by two points and a bulge value.
