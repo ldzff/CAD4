@@ -1229,14 +1229,14 @@ namespace RobTeach.Views
                     int entityIndex = 0;
                     foreach(var entity in _currentDxfDocument.Entities)
                     {
-                        string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}";
-                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
+                        // string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}"; // Removed: Causes compile error
+                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: Processing DXF Entity at index {entityIndex} (C# type: {entity.GetType().Name})");
                         if (shapeIndex < wpfShapes.Count)
                         {
                             var wpfShape = wpfShapes[shapeIndex];
                             if (wpfShape != null)
                             {
-                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
+                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity at index {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
                                 wpfShape.Stroke = DefaultStrokeBrush;
                                 wpfShape.StrokeThickness = DefaultStrokeThickness;
                                 wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
@@ -1245,19 +1245,19 @@ namespace RobTeach.Views
                             }
                             else
                             {
-                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity {entityIndex} (DXF: {entityIdentifier}) is NULL from CadService.");
+                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity at index {entityIndex} (C# type: {entity.GetType().Name}) is NULL from CadService.");
                             }
                         }
                         else
                         {
-                             Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: No corresponding WPF shape in list for Entity {entityIndex} (DXF: {entityIdentifier}). Shape list too short.");
+                             Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: No corresponding WPF shape in list for Entity at index {entityIndex} (C# type: {entity.GetType().Name}). Shape list too short.");
                         }
                         shapeIndex++;
                         entityIndex++;
                     }
-                    if (wpfShapes.Count < _currentDxfDocument.Entities.Count())
+                    if (wpfShapes.Count != _currentDxfDocument.Entities.Count()) // CadService now returns list with nulls, so counts should match. This log indicates if not.
                     {
-                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WARNING - Mismatch count. DXF Entities: {_currentDxfDocument.Entities.Count()}, WPF Shapes: {wpfShapes.Count}. Some DXF entities may not have been drawn.");
+                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WARNING - Entity count ({_currentDxfDocument.Entities.Count()}) and WPF shapes list count ({wpfShapes.Count}) do not match. This is unexpected if CadService pads with nulls.");
                     }
 
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
@@ -1649,14 +1649,14 @@ namespace RobTeach.Views
                                 int entityIndex = 0;
                                 foreach(var entity in _currentDxfDocument.Entities)
                                 {
-                                    string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}";
-                                    Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
+                                    // string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}"; // Removed: Causes compile error
+                                    Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Processing DXF Entity at index {entityIndex} (C# type: {entity.GetType().Name})");
                                     if (shapeIndex < wpfShapes.Count)
                                     {
                                         var wpfShape = wpfShapes[shapeIndex];
                                         if (wpfShape != null)
                                         {
-                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
+                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity at index {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
                                             wpfShape.Stroke = DefaultStrokeBrush;
                                             wpfShape.StrokeThickness = DefaultStrokeThickness;
                                             wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
@@ -1665,19 +1665,19 @@ namespace RobTeach.Views
                                         }
                                         else
                                         {
-                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity {entityIndex} (DXF: {entityIdentifier}) is NULL from CadService.");
+                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity at index {entityIndex} (C# type: {entity.GetType().Name}) is NULL from CadService.");
                                         }
                                     }
                                     else
                                     {
-                                        Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: No corresponding WPF shape in list for Entity {entityIndex} (DXF: {entityIdentifier}). Shape list too short.");
+                                        Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: No corresponding WPF shape in list for Entity at index {entityIndex} (C# type: {entity.GetType().Name}). Shape list too short.");
                                     }
-                                    shapeIndex++; // Increment shapeIndex regardless to keep it aligned with wpfShapes list if it's 1:1
+                                    shapeIndex++;
                                     entityIndex++;
                                 }
-                                if (wpfShapes.Count < _currentDxfDocument.Entities.Count())
+                                if (wpfShapes.Count != _currentDxfDocument.Entities.Count()) // CadService now returns list with nulls, so counts should match. This log indicates if not.
                                 {
-                                     Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WARNING - Mismatch count. DXF Entities: {_currentDxfDocument.Entities.Count()}, WPF Shapes: {wpfShapes.Count}. Some DXF entities may not have been drawn.");
+                                     Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WARNING - Entity count ({_currentDxfDocument.Entities.Count()}) and WPF shapes list count ({wpfShapes.Count}) do not match. This is unexpected if CadService pads with nulls.");
                                 }
                                 _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                                 PerformFitToView();
