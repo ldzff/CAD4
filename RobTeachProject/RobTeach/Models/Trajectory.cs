@@ -57,6 +57,11 @@ namespace RobTeach.Models
         public TrajectoryPointWithAngles CirclePoint2 { get; set; }
         public TrajectoryPointWithAngles CirclePoint3 { get; set; }
 
+        // Store original parameters for circles to aid robust reconciliation
+        public DxfPoint OriginalCircleCenter { get; set; } = DxfPoint.Origin;
+        public double OriginalCircleRadius { get; set; } = 0.0;
+        public DxfVector OriginalCircleNormal { get; set; } = DxfVector.ZAxis;
+
 
         /// <summary>
         /// Gets or sets a value indicating whether the trajectory's conventional direction should be reversed.

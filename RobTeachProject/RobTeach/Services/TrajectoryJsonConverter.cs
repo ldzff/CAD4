@@ -134,6 +134,10 @@ namespace RobTeach.Services
                     {
                         trajectory.CirclePoint3 = JsonSerializer.Deserialize<TrajectoryPointWithAngles>(circlePoint3Element.GetRawText(), options) ?? new TrajectoryPointWithAngles();
                     }
+                    // Deserialize original circle parameters
+                    trajectory.OriginalCircleCenter = GetDxfPointProperty(root, "OriginalCircleCenter", options);
+                    trajectory.OriginalCircleRadius = GetDoubleProperty(root, "OriginalCircleRadius");
+                    trajectory.OriginalCircleNormal = GetDxfVectorProperty(root, "OriginalCircleNormal", options);
                 }
 
                 // After all properties of Trajectory are deserialized,
@@ -178,33 +182,25 @@ namespace RobTeach.Services
                         }
                         break;
                     case "Circle":
-                        // Reconstruct DxfCircle from CirclePoint1, CirclePoint2, CirclePoint3
-                        if (trajectory.CirclePoint1 != null && trajectory.CirclePoint2 != null && trajectory.CirclePoint3 != null)
+                        // Reconstruct DxfCircle using the deserialized OriginalCircleCenter, OriginalCircleRadius, OriginalCircleNormal
+                        // These are considered more authoritative for reconstructing the entity than recalculating from 3 points,
+                        // especially to match the entity parsed directly from DXF during reconciliation.
+                        if (trajectory.OriginalCircleRadius > 0) // Basic validation
                         {
-                            var circleParams = GeometryUtils.CalculateCircleCenterRadiusFromThreePoints(
-                                trajectory.CirclePoint1.Coordinates,
-                                trajectory.CirclePoint2.Coordinates,
-                                trajectory.CirclePoint3.Coordinates);
-
-                            if (circleParams.HasValue)
+                            trajectory.OriginalDxfEntity = new DxfCircle(
+                                trajectory.OriginalCircleCenter,
+                                trajectory.OriginalCircleRadius)
                             {
-                                trajectory.OriginalDxfEntity = new DxfCircle(
-                                    circleParams.Value.Center,
-                                    circleParams.Value.Radius)
-                                {
-                                    Normal = circleParams.Value.Normal
-                                };
-                            }
-                            else
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Could not reconstruct DxfCircle for trajectory {trajectory.OriginalEntityHandle} as CalculateCircleCenterRadiusFromThreePoints failed.");
-                                // trajectory.OriginalDxfEntity will remain null
-                            }
+                                Normal = trajectory.OriginalCircleNormal
+                            };
+                             System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Reconstructed DxfCircle for trajectory {trajectory.OriginalEntityHandle} using Original parameters.");
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Could not reconstruct DxfCircle for trajectory {trajectory.OriginalEntityHandle} as one or more CirclePoints are null.");
-                            // trajectory.OriginalDxfEntity will remain null
+                            // Fallback or error if original parameters are invalid/missing,
+                            // though they should always be present if saved correctly.
+                            // One could attempt to use the 3 points here as a fallback, but it might lead to the same reconciliation issues.
+                            System.Diagnostics.Debug.WriteLine($"[TrajectoryJsonConverter] Read: Could not reconstruct DxfCircle for trajectory {trajectory.OriginalEntityHandle} as OriginalCircleRadius is invalid or not set. OriginalDxfEntity will be null.");
                         }
                         break;
                     case "LwPolyline": // Assuming LwPolyline data would be deserialized onto Trajectory if supported
@@ -300,6 +296,13 @@ namespace RobTeach.Services
                     JsonSerializer.Serialize(writer, value.CirclePoint2, options);
                     writer.WritePropertyName("CirclePoint3");
                     JsonSerializer.Serialize(writer, value.CirclePoint3, options);
+
+                    // Serialize original circle parameters
+                    writer.WritePropertyName("OriginalCircleCenter");
+                    JsonSerializer.Serialize(writer, value.OriginalCircleCenter, options);
+                    writer.WriteNumber("OriginalCircleRadius", value.OriginalCircleRadius);
+                    writer.WritePropertyName("OriginalCircleNormal");
+                    JsonSerializer.Serialize(writer, value.OriginalCircleNormal, options);
                     break;
             }
 

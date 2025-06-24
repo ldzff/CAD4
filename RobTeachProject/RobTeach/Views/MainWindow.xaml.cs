@@ -1531,6 +1531,11 @@ namespace RobTeach.Views
                             DxfVector dirP3 = (localXAxis * Math.Cos(angle240)) + (localYAxis * Math.Sin(angle240));
                             newTrajectory.CirclePoint3.Coordinates = center + (dirP3 * radius);
 
+                            // Store original parameters as well
+                            newTrajectory.OriginalCircleCenter = center;
+                            newTrajectory.OriginalCircleRadius = radius;
+                            newTrajectory.OriginalCircleNormal = normal;
+
                             // Ensure Z coordinates are consistent if derived from a 2D circle
                             // For a true 3D circle, the Z values from above calculation are correct.
                             // If the original DxfCircle was planar with Z=c.Z, then these points will share that Z.
@@ -2410,6 +2415,11 @@ namespace RobTeach.Views
                                     double marquee_angle240 = 4.0 * Math.PI / 3.0;
                                     DxfVector marquee_dirP3 = (marquee_localXAxis * Math.Cos(marquee_angle240)) + (marquee_localYAxis * Math.Sin(marquee_angle240));
                                     newTrajectory.CirclePoint3.Coordinates = marquee_center + (marquee_dirP3 * marquee_radius);
+
+                                    // Store original parameters as well
+                                    newTrajectory.OriginalCircleCenter = marquee_center;
+                                    newTrajectory.OriginalCircleRadius = marquee_radius;
+                                    newTrajectory.OriginalCircleNormal = marquee_normal;
                                     break;
                                 default:
                                     newTrajectory.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
