@@ -2307,24 +2307,57 @@ namespace RobTeach.Views
                 // Ensure the _currentConfiguration object has the latest product name from the UI
                 _currentConfiguration.ProductName = ProductNameTextBox.Text;
 
-                // Populate DxfFileContent
+                // Populate DxfFileContent for saving
+                string dxfContentForSaving = string.Empty;
                 if (!string.IsNullOrEmpty(_currentDxfFilePath) && File.Exists(_currentDxfFilePath))
                 {
+                    // Case 1: DXF was loaded from a specific file path that still exists
                     try
                     {
-                        _currentConfiguration.DxfFileContent = File.ReadAllText(_currentDxfFilePath);
+                        dxfContentForSaving = File.ReadAllText(_currentDxfFilePath);
+                        Debug.WriteLine($"[JULES_DEBUG] PerformSaveOperation: Saving DXF content from file: {_currentDxfFilePath}");
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"Warning: Could not embed DXF file content in the project file: {ex.Message}");
-                        MessageBox.Show($"Warning: Could not embed DXF file content in the project file: {ex.Message}", "File Read Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        _currentConfiguration.DxfFileContent = string.Empty;
+                        Debug.WriteLine($"Warning: Could not read DXF file content from {_currentDxfFilePath} for saving: {ex.Message}");
+                        MessageBox.Show($"Warning: Could not read DXF file content from '{_currentDxfFilePath}' for saving: {ex.Message}", "File Read Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        // Keep dxfContentForSaving as string.Empty, or decide if we should use in-memory version if available
+                        // For now, if file read fails, we save empty. This could be debated.
+                        // If _currentConfiguration.DxfFileContent (in memory) is already populated from a previous successful load (even embedded),
+                        // it might be better to use that.
+                        // Let's refine: if file read fails, try to use in-memory if it's not the placeholder path.
+                        if (_currentDxfFilePath != "(Embedded DXF from project file)" && !string.IsNullOrEmpty(_currentConfiguration.DxfFileContent)) {
+                             Debug.WriteLine($"[JULES_DEBUG] PerformSaveOperation: File read failed, but using non-empty in-memory DxfFileContent as fallback.");
+                            dxfContentForSaving = _currentConfiguration.DxfFileContent;
+                        } else {
+                            dxfContentForSaving = string.Empty;
+                        }
                     }
+                }
+                else if (_currentDxfFilePath == "(Embedded DXF from project file)" && !string.IsNullOrEmpty(_currentConfiguration.DxfFileContent))
+                {
+                    // Case 2: DXF was loaded from embedded content in a previously loaded configuration.
+                    // We should re-save this embedded content.
+                    // _currentConfiguration.DxfFileContent already holds this from the load.
+                    dxfContentForSaving = _currentConfiguration.DxfFileContent;
+                    Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: Re-saving existing embedded DxfFileContent.");
                 }
                 else
                 {
-                    _currentConfiguration.DxfFileContent = string.Empty;
+                    // Case 3: No valid DXF file path and no current embedded content (e.g., new config without DXF loaded, or path was invalid and no prior embedded data)
+                    // Or if _currentDxfFilePath was something else invalid and File.Exists was false.
+                    // If _currentConfiguration.DxfFileContent has something (e.g. from a successful load before path became invalid), use it.
+                    if (!string.IsNullOrEmpty(_currentConfiguration.DxfFileContent)) {
+                        Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: Using existing in-memory DxfFileContent as _currentDxfFilePath is invalid or missing for file operations.");
+                        dxfContentForSaving = _currentConfiguration.DxfFileContent;
+                    } else {
+                        Debug.WriteLine("[JULES_DEBUG] PerformSaveOperation: No valid DXF source found, DxfFileContent will be empty for saving.");
+                        dxfContentForSaving = string.Empty;
+                    }
                 }
+                // Assign the determined DXF content to the _currentConfiguration, so it's part of what configToSave copies.
+                _currentConfiguration.DxfFileContent = dxfContentForSaving;
+
 
                 // Populate Modbus Settings
                 _currentConfiguration.ModbusIpAddress = ModbusIpAddressTextBox.Text;
