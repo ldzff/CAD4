@@ -289,10 +289,16 @@ namespace RobTeach.Views
                 _currentConfiguration.CurrentPassIndex >= _currentConfiguration.SprayPasses.Count ||
                 _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].Trajectories == null)
             {
+                Debug.WriteLine("[JULES_DEBUG] UpdateOrderNumberLabels: Current configuration or pass is invalid, returning.");
                 return;
             }
 
             var currentPassTrajectories = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex].Trajectories;
+            Debug.WriteLine("[JULES_DEBUG] At the beginning of UpdateOrderNumberLabels. Current pass trajectory order:");
+            for (int i = 0; i < currentPassTrajectories.Count; i++)
+            {
+                Debug.WriteLine($"[JULES_DEBUG]   UpdateLabels-Entry: Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPassTrajectories[i].ToString()}");
+            }
 
             for (int i = 0; i < currentPassTrajectories.Count; i++)
             {
@@ -1553,6 +1559,29 @@ namespace RobTeach.Views
                         _currentConfiguration = new Models.Configuration { ProductName = $"Product_{DateTime.Now:yyyyMMddHHmmss}" };
                         // No further processing if config is null
                     }
+                    else // Configuration loaded successfully
+                    {
+                        Debug.WriteLine("[JULES_DEBUG] Configuration loaded. Trajectory order after deserialization:");
+                        if (_currentConfiguration.SprayPasses != null && _currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
+                        {
+                            var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
+                            if (currentPass != null && currentPass.Trajectories != null)
+                            {
+                                for (int i = 0; i < currentPass.Trajectories.Count; i++)
+                                {
+                                    Debug.WriteLine($"[JULES_DEBUG]   Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPass.Trajectories[i].ToString()}");
+                                }
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[JULES_DEBUG]   Current pass ({_currentConfiguration.CurrentPassIndex}) or its trajectories are null.");
+                            }
+                        }
+                        else
+                        {
+                            Debug.WriteLine("[JULES_DEBUG]   No spray passes or current pass index is invalid.");
+                        }
+                    }
 
                     ProductNameTextBox.Text = _currentConfiguration.ProductName;
 
@@ -1690,6 +1719,19 @@ namespace RobTeach.Views
                     UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI for potentially selected trajectory
                     RefreshCadCanvasHighlights(); // Update canvas highlights for the loaded pass
                     UpdateDirectionIndicator(); // Config loaded, selection might have changed
+
+                    Debug.WriteLine("[JULES_DEBUG] Before calling UpdateOrderNumberLabels in LoadConfigButton_Click:");
+                    if (_currentConfiguration != null && _currentConfiguration.SprayPasses != null && _currentConfiguration.CurrentPassIndex >= 0 && _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
+                    {
+                        var currentPass = _currentConfiguration.SprayPasses[_currentConfiguration.CurrentPassIndex];
+                        if (currentPass != null && currentPass.Trajectories != null)
+                        {
+                            for (int i = 0; i < currentPass.Trajectories.Count; i++)
+                            {
+                                Debug.WriteLine($"[JULES_DEBUG]   LoadConfig-PreCall: Pass[{_currentConfiguration.CurrentPassIndex}]-Trajectory[{i}]: {currentPass.Trajectories[i].ToString()}");
+                            }
+                        }
+                    }
                     UpdateOrderNumberLabels();
 
                     // Assuming _cadService.GetWpfShapesFromDxf and entity selection logic
@@ -2565,6 +2607,7 @@ namespace RobTeach.Views
             }
 
             Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Starting. Document has {currentDoc.Entities.Count()} entities.");
+            Debug.WriteLine("[JULES_DEBUG] ReconcileTrajectoryEntities: Entering method.");
 
             // Create a list of available entities from the document to "consume" as they are matched
             // This helps handle cases where multiple identical geometric entities might exist in the DXF,
@@ -2573,7 +2616,17 @@ namespace RobTeach.Views
 
             foreach (var pass in config.SprayPasses)
             {
-                if (pass.Trajectories == null) continue;
+                if (pass.Trajectories == null)
+                {
+                    Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Pass '{pass.PassName}' has null trajectories. Skipping.");
+                    continue;
+                }
+                Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Processing pass '{pass.PassName}'. Initial trajectory order:");
+                for(int k=0; k < pass.Trajectories.Count; k++)
+                {
+                    Debug.WriteLine($"[JULES_DEBUG]   Pre-Reconcile: Pass[{pass.PassName}]-Trajectory[{k}]: {pass.Trajectories[k].ToString()}");
+                }
+
                 for (int i = 0; i < pass.Trajectories.Count; i++)
                 {
                     var trajectory = pass.Trajectories[i];
@@ -2609,8 +2662,14 @@ namespace RobTeach.Views
                         Debug.WriteLine($"[WARNING] ReconcileTrajectoryEntities: Could not find a matching live entity for deserialized {trajectory.OriginalDxfEntity.GetType().Name}.");
                     }
                 }
+                Debug.WriteLine($"[JULES_DEBUG] ReconcileTrajectoryEntities: Finished processing pass '{pass.PassName}'. Final trajectory order for this pass:");
+                for(int k=0; k < pass.Trajectories.Count; k++)
+                {
+                    Debug.WriteLine($"[JULES_DEBUG]   Post-Reconcile: Pass[{pass.PassName}]-Trajectory[{k}]: {pass.Trajectories[k].ToString()}");
+                }
             }
             Debug.WriteLine("[DEBUG] ReconcileTrajectoryEntities: Finished.");
+            Debug.WriteLine("[JULES_DEBUG] ReconcileTrajectoryEntities: Exiting method.");
         }
 
 
