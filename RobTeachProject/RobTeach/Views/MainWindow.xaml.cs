@@ -42,7 +42,7 @@ namespace RobTeach.Views
         private string? _currentLoadedConfigPath; // Path to the last successfully loaded configuration file.
         private Models.Configuration _currentConfiguration; // The active configuration, either loaded or built from selections.
         private bool isConfigurationDirty = false;
-        private RobTeach.Models.Trajectory _trajectoryInDetailView;
+        private RobTeach.Models.Trajectory? _trajectoryInDetailView; // Made nullable
 
         // Collections for managing DXF entities and their WPF shape representations
         private readonly List<DxfEntity> _selectedDxfEntities = new List<DxfEntity>(); // Stores original DXF entities selected by the user.
@@ -62,7 +62,7 @@ namespace RobTeach.Views
         private Rect _dxfBoundingBox = Rect.Empty;      // Stores the calculated bounding box of the entire loaded DXF document.
 
         // Fields for Marquee Selection
-        private System.Windows.Shapes.Rectangle selectionRectangleUI = null; // The visual rectangle for selection
+        private System.Windows.Shapes.Rectangle? selectionRectangleUI = null; // The visual rectangle for selection
         private System.Windows.Point selectionStartPoint;                   // Start point of the selection rectangle
         private bool isSelectingWithRect = false;                         // Flag indicating if marquee selection is active
 
@@ -636,10 +636,17 @@ namespace RobTeach.Views
                 }
                 else if (selectedTrajectory.PrimitiveType == "Arc")
                 {
-                    // ArcCenterZTextBox.Text = selectedTrajectory.ArcCenter.Z.ToString("F3"); // ArcCenter no longer exists on Trajectory
-                    // UI for 3-point arc editing will be handled in a later stage.
-                    // For now, clear or leave the old TextBox empty.
-                    ArcCenterZTextBox.Text = string.Empty;
+                    // For an arc defined by 3 points, the concept of a single "ArcCenter.Z" is complex
+                    // if the arc is tilted. For now, we might display the Z of the first point,
+                    // or average Z, or leave it blank. Assuming P1's Z for simplicity if available.
+                    if (selectedTrajectory.ArcPoint1 != null)
+                    {
+                        ArcCenterZTextBox.Text = selectedTrajectory.ArcPoint1.Coordinates.Z.ToString("F3");
+                    }
+                    else
+                    {
+                        ArcCenterZTextBox.Text = string.Empty; // Or some default like "N/A"
+                    }
                 }
                 else if (selectedTrajectory.PrimitiveType == "Circle")
                 {
@@ -1142,20 +1149,50 @@ namespace RobTeach.Views
         {
             if (double.TryParse(ArcCenterZTextBox.Text, out double newZ))
             {
-                if (_trajectoryInDetailView.ArcCenter.Z != newZ)
+                // For a 3-point arc, updating a single "Center Z" is complex.
+                // Assuming this Z applies to all three points P1, P2, P3 for simplicity,
+                // which means the arc is being moved along the Z-axis without tilting.
+                bool changed = false;
+                if (_trajectoryInDetailView.ArcPoint1 != null && _trajectoryInDetailView.ArcPoint1.Coordinates.Z != newZ)
                 {
-                    _trajectoryInDetailView.ArcCenter = new DxfPoint(
-                        _trajectoryInDetailView.ArcCenter.X,
-                        _trajectoryInDetailView.ArcCenter.Y,
+                    _trajectoryInDetailView.ArcPoint1.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.ArcPoint1.Coordinates.X,
+                        _trajectoryInDetailView.ArcPoint1.Coordinates.Y,
                         newZ);
+                    changed = true;
+                }
+                if (_trajectoryInDetailView.ArcPoint2 != null && _trajectoryInDetailView.ArcPoint2.Coordinates.Z != newZ)
+                {
+                    _trajectoryInDetailView.ArcPoint2.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.ArcPoint2.Coordinates.X,
+                        _trajectoryInDetailView.ArcPoint2.Coordinates.Y,
+                        newZ);
+                    changed = true;
+                }
+                if (_trajectoryInDetailView.ArcPoint3 != null && _trajectoryInDetailView.ArcPoint3.Coordinates.Z != newZ)
+                {
+                    _trajectoryInDetailView.ArcPoint3.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.ArcPoint3.Coordinates.X,
+                        _trajectoryInDetailView.ArcPoint3.Coordinates.Y,
+                        newZ);
+                    changed = true;
+                }
+
+                if (changed)
+                {
                     isConfigurationDirty = true;
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString()
+                    PopulateTrajectoryPoints(_trajectoryInDetailView); // Regenerate points with new Z
+                    CurrentPassTrajectoriesListBox.Items.Refresh();
                 }
             }
             else
             {
-                MessageBox.Show("Invalid Arc Center Z value. Please enter a valid number.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                ArcCenterZTextBox.Text = _trajectoryInDetailView.ArcCenter.Z.ToString("F3");
+                MessageBox.Show("Invalid Arc Z value. Please enter a valid number.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Restore to P1's Z or leave as is
+                if(_trajectoryInDetailView.ArcPoint1 != null)
+                    ArcCenterZTextBox.Text = _trajectoryInDetailView.ArcPoint1.Coordinates.Z.ToString("F3");
+                else
+                    ArcCenterZTextBox.Text = "0.000"; // Default if P1 is null
             }
         }
     }
@@ -1376,22 +1413,16 @@ namespace RobTeach.Views
             Trajectory trajectoryToSelect = null; // Declare at wider scope
 
             // Detailed check for the main condition
-            bool isShape = sender is System.Windows.Shapes.Shape;
-            bool keyExists = false;
-            if (isShape)
+            if (sender is System.Windows.Shapes.Shape clickedShape && _wpfShapeToDxfEntityMap.TryGetValue(clickedShape, out DxfEntity? dxfEntity))
             {
-                keyExists = _wpfShapeToDxfEntityMap.ContainsKey((System.Windows.Shapes.Shape)sender);
-            }
-            Trace.WriteLine($"  -- Checking sender type: {sender?.GetType().Name ?? "null"}, IsShape: {isShape}, Map contains key: {keyExists}");
-            Trace.Flush();
-
-            if (isShape && keyExists)
-            {
-                System.Windows.Shapes.Shape clickedShape = (System.Windows.Shapes.Shape)sender;
+                // keyExists is implicitly true if TryGetValue succeeds.
+                // dxfEntity will be non-null if TryGetValue returns true.
+                Trace.WriteLine($"  -- Checking sender type: {sender?.GetType().Name ?? "null"}, IsShape: true, Map contains key: true");
+                Trace.Flush();
                 Trace.WriteLine("  -- Condition (sender is Shape AND _wpfShapeToDxfEntityMap contains key) MET");
                 Trace.Flush();
 
-                var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape];
+                // var dxfEntity = _wpfShapeToDxfEntityMap[clickedShape]; // No longer needed due to TryGetValue
                 Trace.WriteLine($"  -- Retrieved dxfEntity: {dxfEntity?.GetType().Name ?? "null"}");
                 Debug.WriteLine($"[DEBUG] OnCadEntityClicked: Retrieved DxfEntity: {dxfEntity?.GetType().Name}");
                 Trace.Flush();
@@ -1462,23 +1493,37 @@ namespace RobTeach.Views
                             break;
                         case DxfArc arc:
                             newTrajectory.PrimitiveType = "Arc";
-                            // Calculate P1, P2 (mid), P3 for the arc
+                            // Calculate P1, P2 (mid), P3 for the arc using DxfArc properties
+                            double startRad = arc.StartAngle * Math.PI / 180.0;
+                            double endRad = arc.EndAngle * Math.PI / 180.0;
+
                             // P1 (Start Point)
-                            newTrajectory.ArcPoint1.Coordinates = arc.GetPoint(arc.StartAngle * Math.PI / 180.0);
+                            newTrajectory.ArcPoint1.Coordinates = new DxfPoint(
+                                arc.Center.X + arc.Radius * Math.Cos(startRad),
+                                arc.Center.Y + arc.Radius * Math.Sin(startRad),
+                                arc.Center.Z // Assuming arc is planar, Z is from center
+                            );
+
                             // P3 (End Point)
-                            newTrajectory.ArcPoint3.Coordinates = arc.GetPoint(arc.EndAngle * Math.PI / 180.0);
-                            // P2 (Mid Point)
+                            newTrajectory.ArcPoint3.Coordinates = new DxfPoint(
+                                arc.Center.X + arc.Radius * Math.Cos(endRad),
+                                arc.Center.Y + arc.Radius * Math.Sin(endRad),
+                                arc.Center.Z
+                            );
+
+                            // P2 (Mid Point Angle)
                             // Ensure angles are handled correctly for sweep (e.g. Start=350, End=10)
-                            double startAngleRad = arc.StartAngle * Math.PI / 180.0;
-                            double endAngleRad = arc.EndAngle * Math.PI / 180.0;
-                            if (endAngleRad < startAngleRad) // Adjust if end angle is "smaller" due to wrap around
+                            if (endRad < startRad) // Adjust if end angle is "smaller" due to wrap around
                             {
-                                endAngleRad += 2 * Math.PI;
+                                endRad += 2 * Math.PI;
                             }
-                            double midAngleRad = (startAngleRad + endAngleRad) / 2.0;
-                            newTrajectory.ArcPoint2.Coordinates = arc.GetPoint(midAngleRad);
+                            double midRad = (startRad + endRad) / 2.0;
+                            newTrajectory.ArcPoint2.Coordinates = new DxfPoint(
+                                arc.Center.X + arc.Radius * Math.Cos(midRad),
+                                arc.Center.Y + arc.Radius * Math.Sin(midRad),
+                                arc.Center.Z
+                            );
                             // Rx, Ry, Rz for ArcPoint1, ArcPoint2, ArcPoint3 will default to 0.0
-                            // newTrajectory.ArcNormal = arc.Normal; // ArcNormal is no longer a direct property of Trajectory for arcs
                             break;
                         case DxfCircle circle:
                             newTrajectory.PrimitiveType = "Circle";
@@ -2160,7 +2205,7 @@ namespace RobTeach.Views
                     {
                         if (geometryResult.VisualHit is System.Windows.Shapes.Shape hitShape)
                         {
-                            if (_wpfShapeToDxfEntityMap.TryGetValue(hitShape, out DxfEntity hitEntity))
+                            if (_wpfShapeToDxfEntityMap.TryGetValue(hitShape, out DxfEntity? hitEntity) && hitEntity != null)
                             {
                                 if (!marqueeHitEntities.Contains(hitEntity))
                                 {
@@ -2210,21 +2255,23 @@ namespace RobTeach.Views
                     // Mode: Additive selection (Normal Marquee)
                     // Add any items from the marquee that are not already selected.
                     int itemsAddedCount = 0;
-                    foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
+                    foreach (DxfEntity? hitDxfEntity in marqueeHitEntities) // hitDxfEntity can be null if TryGetValue failed but was added
                     {
+                        if (hitDxfEntity == null) continue; // Skip null entities
+
                         // Use geometric comparison to check if already selected, due to potential instance differences
-                        bool alreadySelected = currentPass.Trajectories.Any(t => AreEntitiesGeometricallyEquivalent(t.OriginalDxfEntity, hitDxfEntity));
+                        bool alreadySelected = currentPass.Trajectories.Any(t => t.OriginalDxfEntity != null && AreEntitiesGeometricallyEquivalent(t.OriginalDxfEntity, hitDxfEntity));
                         if (!alreadySelected)
                         {
                             Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Normal Marquee - Additive): Adding {hitDxfEntity.GetType().Name} as it's not geometrically equivalent to any existing selected trajectory's entity.");
                             var newTrajectory = new Trajectory
                             {
                                 OriginalDxfEntity = hitDxfEntity,
-                                EntityType = hitDxfEntity.GetType().Name,
+                                EntityType = hitDxfEntity.GetType().Name, // Safe due to null check above
                                 IsReversed = false // Default
                             };
                             // Populate geometric properties for the new trajectory
-                            switch (hitDxfEntity)
+                            switch (hitDxfEntity) // Safe due to null check above
                             {
                                 case DxfLine line:
                                     newTrajectory.PrimitiveType = "Line";
@@ -2233,11 +2280,23 @@ namespace RobTeach.Views
                                     break;
                                 case DxfArc arc:
                                     newTrajectory.PrimitiveType = "Arc";
-                                    newTrajectory.ArcCenter = arc.Center;
-                                    newTrajectory.ArcRadius = arc.Radius;
-                                    newTrajectory.ArcStartAngle = arc.StartAngle;
-                                    newTrajectory.ArcEndAngle = arc.EndAngle;
-                                    newTrajectory.ArcNormal = arc.Normal;
+                                    // Populate ArcPoint1, ArcPoint2, ArcPoint3 from DxfArc
+                                    double startRadMarquee = arc.StartAngle * Math.PI / 180.0;
+                                    double endRadMarquee = arc.EndAngle * Math.PI / 180.0;
+                                    newTrajectory.ArcPoint1.Coordinates = new DxfPoint(
+                                        arc.Center.X + arc.Radius * Math.Cos(startRadMarquee),
+                                        arc.Center.Y + arc.Radius * Math.Sin(startRadMarquee),
+                                        arc.Center.Z);
+                                    newTrajectory.ArcPoint3.Coordinates = new DxfPoint(
+                                        arc.Center.X + arc.Radius * Math.Cos(endRadMarquee),
+                                        arc.Center.Y + arc.Radius * Math.Sin(endRadMarquee),
+                                        arc.Center.Z);
+                                    if (endRadMarquee < startRadMarquee) endRadMarquee += 2 * Math.PI;
+                                    double midRadMarquee = (startRadMarquee + endRadMarquee) / 2.0;
+                                    newTrajectory.ArcPoint2.Coordinates = new DxfPoint(
+                                        arc.Center.X + arc.Radius * Math.Cos(midRadMarquee),
+                                        arc.Center.Y + arc.Radius * Math.Sin(midRadMarquee),
+                                        arc.Center.Z);
                                     break;
                                 case DxfCircle circle:
                                     newTrajectory.PrimitiveType = "Circle";

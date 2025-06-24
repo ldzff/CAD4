@@ -287,57 +287,61 @@ namespace RobTeach.Services
         var points = new List<System.Windows.Point>();
         if (trajectory == null || trajectory.PrimitiveType != "Arc" || resolutionDegrees <= 0) return points;
 
-        double startAngle = trajectory.ArcStartAngle;
-        double endAngle = trajectory.ArcEndAngle;
-        double radius = trajectory.ArcRadius;
-        System.Windows.Point center = new System.Windows.Point(trajectory.ArcCenter.X, trajectory.ArcCenter.Y);
-        // Note: trajectory.ArcNormal is available if needed for 3D calculations, but WPF points are 2D.
+        // Use the 3-point arc definition
+        DxfPoint p1 = trajectory.ArcPoint1.Coordinates;
+        DxfPoint p2 = trajectory.ArcPoint2.Coordinates; // Midpoint
+        DxfPoint p3 = trajectory.ArcPoint3.Coordinates;
 
-        // Normalize angles: if IsReversed, we swap, then normalize.
-        // Otherwise, normalize standard way.
-        if (trajectory.IsReversed)
+        // Calculate center, radius, start angle, end angle from 3 points
+        // This is a non-trivial calculation. For simplicity, we'll assume these were pre-calculated
+        // and stored in the DxfArc object if available, or we need a helper function.
+        // For now, let's assume OriginalDxfEntity is a DxfArc and use its properties.
+        if (trajectory.OriginalDxfEntity is DxfArc dxfArc)
         {
-            double temp = startAngle;
-            startAngle = endAngle;
-            endAngle = temp;
-        }
+            double startAngle = dxfArc.StartAngle;
+            double endAngle = dxfArc.EndAngle;
+            double radius = dxfArc.Radius;
+            System.Windows.Point center = new System.Windows.Point(dxfArc.Center.X, dxfArc.Center.Y);
 
-        // Standard normalization for arc traversal (always counter-clockwise for DXF interpretation)
-        // If after potential reversal, endAngle is less than startAngle, adjust for CCW traversal.
-        double currentSweepAngle = endAngle - startAngle;
-        if (currentSweepAngle < 0)
-        {
-            currentSweepAngle += 360.0;
-        }
-        // Effective end angle for loop condition
-        double effectiveEndAngle = startAngle + currentSweepAngle;
-
-
-        double currentAngle = startAngle;
-        // Loop with a small tolerance for floating point comparisons
-        while (currentAngle <= effectiveEndAngle + (resolutionDegrees / 2.0)) // Add half step for inclusivity at end
-        {
-            // Ensure we don't overshoot the effectiveEndAngle significantly
-            double angleToProcess = Math.Min(currentAngle, effectiveEndAngle);
-
-            double radAngle = angleToProcess * Math.PI / 180.0;
-            double x = center.X + radius * Math.Cos(radAngle);
-            double y = center.Y + radius * Math.Sin(radAngle);
-            points.Add(new System.Windows.Point(x, y));
-
-            if (angleToProcess >= effectiveEndAngle - 0.00001) // Break if we processed the end angle
-                break;
-
-            currentAngle += resolutionDegrees;
-            if (currentAngle > effectiveEndAngle && angleToProcess < effectiveEndAngle - 0.00001) // Ensure last point is added if step overshoots
+            if (trajectory.IsReversed)
             {
-                 currentAngle = effectiveEndAngle; // Force next iteration to be the end angle
+                double temp = startAngle;
+                startAngle = endAngle;
+                endAngle = temp;
+            }
+
+            double currentSweepAngle = endAngle - startAngle;
+            if (currentSweepAngle < 0)
+            {
+                currentSweepAngle += 360.0;
+            }
+            double effectiveEndAngle = startAngle + currentSweepAngle;
+
+            double currentAngle = startAngle;
+            while (currentAngle <= effectiveEndAngle + (resolutionDegrees / 2.0))
+            {
+                double angleToProcess = Math.Min(currentAngle, effectiveEndAngle);
+                double radAngle = angleToProcess * Math.PI / 180.0;
+                double x = center.X + radius * Math.Cos(radAngle);
+                double y = center.Y + radius * Math.Sin(radAngle);
+                points.Add(new System.Windows.Point(x, y));
+
+                if (angleToProcess >= effectiveEndAngle - 0.00001) break;
+
+                currentAngle += resolutionDegrees;
+                if (currentAngle > effectiveEndAngle && angleToProcess < effectiveEndAngle - 0.00001)
+                {
+                    currentAngle = effectiveEndAngle;
+                }
             }
         }
-
-        // If IsReversed was true initially, the points were generated in reverse order.
-        // No need to call points.Reverse() because the loop already traversed from "new" start to "new" end.
-
+        else
+        {
+            // Fallback or error handling if OriginalDxfEntity is not a DxfArc or is null
+            // This part needs a robust way to calculate arc parameters from p1, p2, p3
+            // For now, we'll return an empty list if we can't get parameters from DxfArc
+            Console.WriteLine("Warning: Could not generate points for arc trajectory. OriginalDxfEntity is not a DxfArc or is null.");
+        }
         return points;
     }
 

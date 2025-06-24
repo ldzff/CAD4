@@ -53,7 +53,8 @@ namespace RobTeach.Services
                         break;
                 }
             }
-            throw new JsonException("Expected EndObject token for DxfPoint");
+            // Should be unreachable if logic is correct and reader doesn't throw earlier
+            throw new JsonException("Expected EndObject token for DxfPoint, but loop terminated unexpectedly.");
         }
 
         public override void Write(Utf8JsonWriter writer, DxfPoint value, JsonSerializerOptions options)
@@ -108,7 +109,8 @@ namespace RobTeach.Services
                         break;
                 }
             }
-            throw new JsonException("Expected EndObject token for DxfVector");
+            // Should be unreachable
+            throw new JsonException("Expected EndObject token for DxfVector, but loop terminated unexpectedly.");
         }
 
         public override void Write(Utf8JsonWriter writer, DxfVector value, JsonSerializerOptions options)
@@ -168,7 +170,7 @@ namespace RobTeach.Services
         /// <returns>A <see cref="Configuration"/> object if deserialization is successful;
         /// otherwise, <c>null</c> if the file does not exist or if an error occurs during deserialization.</returns>
         /// <exception cref="System.ArgumentNullException">Thrown if <paramref name="filePath"/> is null or empty.</exception>
-        public Configuration LoadConfiguration(string filePath)
+        public Configuration? LoadConfiguration(string filePath)
         {
             if (string.IsNullOrEmpty(filePath)) throw new ArgumentNullException(nameof(filePath));
 

@@ -128,7 +128,8 @@ namespace RobTeach.Services
                 int trajectoriesToSendCount = Math.Min(trajectoriesToProcess.Count, MaxTrajectories);
 
                 // Write the total number of trajectories being sent.
-                modbusClient.WriteSingleRegister(TrajectoryCountRegister, trajectoriesToSendCount);
+                // modbusClient will be non-null here due to IsConnected check
+                modbusClient!.WriteSingleRegister(TrajectoryCountRegister, trajectoriesToSendCount);
 
                 // Loop through each trajectory to be sent.
                 for (int i = 0; i < trajectoriesToSendCount; i++)
