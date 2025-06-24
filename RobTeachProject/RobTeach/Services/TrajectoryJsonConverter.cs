@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using RobTeach.Models;
 using IxMilia.Dxf; // For DxfPoint and DxfVector
+using IxMilia.Dxf.Entities; // For DxfLine, DxfArc, DxfCircle etc.
 
 namespace RobTeach.Services
 {
