@@ -636,7 +636,10 @@ namespace RobTeach.Views
                 }
                 else if (selectedTrajectory.PrimitiveType == "Arc")
                 {
-                    ArcCenterZTextBox.Text = selectedTrajectory.ArcCenter.Z.ToString("F3");
+                    // ArcCenterZTextBox.Text = selectedTrajectory.ArcCenter.Z.ToString("F3"); // ArcCenter no longer exists on Trajectory
+                    // UI for 3-point arc editing will be handled in a later stage.
+                    // For now, clear or leave the old TextBox empty.
+                    ArcCenterZTextBox.Text = string.Empty;
                 }
                 else if (selectedTrajectory.PrimitiveType == "Circle")
                 {
