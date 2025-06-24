@@ -47,12 +47,10 @@ namespace RobTeach.Models
         public DxfPoint LineStartPoint { get; set; } = DxfPoint.Origin;
         public DxfPoint LineEndPoint { get; set; } = DxfPoint.Origin;
 
-        // Geometric parameters for Arc
-        public DxfPoint ArcCenter { get; set; } = DxfPoint.Origin;
-        public double ArcRadius { get; set; } = 0.0;
-        public double ArcStartAngle { get; set; } = 0.0;
-        public double ArcEndAngle { get; set; } = 0.0;
-        public DxfVector ArcNormal { get; set; } = DxfVector.ZAxis;
+        // Geometric parameters for Arc (3-point definition with angles)
+        public TrajectoryPointWithAngles ArcPoint1 { get; set; }
+        public TrajectoryPointWithAngles ArcPoint2 { get; set; } // Midpoint on arc
+        public TrajectoryPointWithAngles ArcPoint3 { get; set; }
 
         // Geometric parameters for Circle
         public DxfPoint CircleCenter { get; set; } = DxfPoint.Origin;
@@ -114,6 +112,9 @@ namespace RobTeach.Models
         {
             // Default constructor for JSON deserialization and typical instantiation.
             // Points list is initialized by default.
+            ArcPoint1 = new TrajectoryPointWithAngles();
+            ArcPoint2 = new TrajectoryPointWithAngles();
+            ArcPoint3 = new TrajectoryPointWithAngles();
         }
 
         public override string ToString()
@@ -125,7 +126,9 @@ namespace RobTeach.Models
                     details = $"Line ({LineStartPoint} -> {LineEndPoint})";
                     break;
                 case "Arc":
-                    details = $"Arc (Cen:{ArcCenter}, R:{ArcRadius}, A:{ArcStartAngle:F1}°-{ArcEndAngle:F1}°)";
+                    // Update ToString to reflect new 3-point arc definition
+                    details = $"Arc (P1:{ArcPoint1.Coordinates}, P2:{ArcPoint2.Coordinates}, P3:{ArcPoint3.Coordinates})";
+                    // Optionally, could include angles if they are relevant for display here
                     break;
                 case "Circle":
                     details = $"Circle (Cen:{CircleCenter}, R:{CircleRadius})";

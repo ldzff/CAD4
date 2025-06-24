@@ -712,7 +712,112 @@ namespace RobTeach.Views
                     trajectory.Points.AddRange(_cadService.ConvertLineTrajectoryToPoints(trajectory));
                     break;
                 case "Arc":
-                    trajectory.Points.AddRange(_cadService.ConvertArcTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle));
+                    if (trajectory.ArcPoint1 != null && trajectory.ArcPoint2 != null && trajectory.ArcPoint3 != null)
+                    {
+                        var arcParams = CalculateArcParametersFromThreePoints(
+                            trajectory.ArcPoint1.Coordinates,
+                            trajectory.ArcPoint2.Coordinates,
+                            trajectory.ArcPoint3.Coordinates);
+
+                        if (arcParams.HasValue)
+                        {
+                            var (center, radius, startAngle, endAngle, normal, isClockwise) = arcParams.Value;
+                            // Create a temporary DxfArc to use with existing CadService method
+                            // Note: CadService.ConvertArcToPoints expects angles in degrees.
+                            // The DxfArc constructor also expects angles in degrees.
+                            DxfArc tempArc = new DxfArc(center, radius, startAngle, endAngle) { Normal = normal };
+
+                            // If the original intention was a CW arc from P1->P2->P3, but DxfArc always assumes CCW,
+                            // and our CalculateArcParametersFromThreePoints also re-orders to ensure CCW for DxfArc,
+                            // then the points should be generated correctly.
+                            // If `IsReversed` on trajectory is true, that will be handled by `_cadService.ConvertArcToPoints` if it has that logic,
+                            // or it might need to be handled by swapping start/end angles before calling.
+                            // For now, assuming ConvertArcToPoints generates CCW points from startAngle to endAngle.
+                            // The IsReversed logic is handled in ConvertArcTrajectoryToPoints in CadService if it needs to be.
+                            // Let's assume the current CadService.ConvertArcToPoints can take this tempArc.
+                            // However, ConvertArcTrajectoryToPoints takes a Trajectory object.
+                            // We need to adapt _cadService.ConvertArcToPoints or use a similar discretization here.
+
+                            // Re-using the logic from CadService.ConvertArcToPoints directly for now for simplicity:
+                            List<Point> arcPoints = new List<Point>();
+                            double currentAngleDeg = startAngle;
+                            double effectiveEndAngleDeg = endAngle;
+
+                            if (isClockwise) // Should have been handled by swapping start/end in CalculateArcParameters. Re-check.
+                            {
+                                // If CalculateArcParametersFromThreePoints always returns startAngle < endAngle for CCW DxfArc,
+                                // then isClockwise flag here might be redundant or indicate original user intent.
+                                // For now, assume parameters are for CCW traversal.
+                                // If trajectory.IsReversed is true, then we need to reverse the point generation order or angles.
+                                if (trajectory.IsReversed) {
+                                    currentAngleDeg = endAngle;
+                                    effectiveEndAngleDeg = startAngle;
+                                    if (effectiveEndAngleDeg > currentAngleDeg) currentAngleDeg += 360; // Sweep backwards
+                                } else {
+                                     if (effectiveEndAngleDeg < currentAngleDeg) effectiveEndAngleDeg += 360;
+                                }
+                            } else { // CCW from P1->P2->P3
+                                if (trajectory.IsReversed) {
+                                    currentAngleDeg = endAngle;
+                                    effectiveEndAngleDeg = startAngle;
+                                    if (effectiveEndAngleDeg > currentAngleDeg) currentAngleDeg += 360; // Sweep backwards
+                                } else {
+                                     if (effectiveEndAngleDeg < currentAngleDeg) effectiveEndAngleDeg += 360;
+                                }
+                            }
+
+                            bool sweepBackwards = trajectory.IsReversed; // Simplified logic from CadService.ConvertArcTrajectoryToPoints
+                            if (sweepBackwards) {
+                                currentAngleDeg = endAngle; // Start from original end
+                                effectiveEndAngleDeg = startAngle; // Go to original start
+                                 // Ensure we sweep correctly backwards
+                                double sweep = effectiveEndAngleDeg - currentAngleDeg;
+                                if (sweep > 0) sweep -= 360; // Ensure negative or zero sweep for backward
+                                effectiveEndAngleDeg = currentAngleDeg + sweep; // Target for loop
+                            } else {
+                                currentAngleDeg = startAngle;
+                                effectiveEndAngleDeg = endAngle;
+                                double sweep = effectiveEndAngleDeg - currentAngleDeg;
+                                if (sweep < 0) sweep += 360; // Ensure positive or zero sweep for forward
+                                effectiveEndAngleDeg = currentAngleDeg + sweep;
+                            }
+
+
+                            double step = sweepBackwards ? -TrajectoryPointResolutionAngle : TrajectoryPointResolutionAngle;
+                            if (Math.Abs(step) < 1e-6) step = sweepBackwards ? -1.0 : 1.0; // Avoid zero step
+
+                            if (sweepBackwards) {
+                                while (currentAngleDeg >= effectiveEndAngleDeg - Math.Abs(step)/2.0) { // Loop condition for backwards
+                                    double radAngle = currentAngleDeg * Math.PI / 180.0;
+                                    arcPoints.Add(new Point(center.X + radius * Math.Cos(radAngle), center.Y + radius * Math.Sin(radAngle)));
+                                    if (currentAngleDeg <= effectiveEndAngleDeg + 1e-5 && currentAngleDeg >= effectiveEndAngleDeg - 1e-5) break; // Reached end
+                                    currentAngleDeg += step;
+                                     if (currentAngleDeg < effectiveEndAngleDeg && currentAngleDeg > effectiveEndAngleDeg + step -1e-5 ) currentAngleDeg = effectiveEndAngleDeg; // Ensure last point
+                                }
+                            } else {
+                                while (currentAngleDeg <= effectiveEndAngleDeg + Math.Abs(step)/2.0) { // Loop condition for forwards
+                                    double radAngle = currentAngleDeg * Math.PI / 180.0;
+                                    arcPoints.Add(new Point(center.X + radius * Math.Cos(radAngle), center.Y + radius * Math.Sin(radAngle)));
+                                     if (currentAngleDeg <= effectiveEndAngleDeg + 1e-5 && currentAngleDeg >= effectiveEndAngleDeg - 1e-5) break; // Reached end
+                                    currentAngleDeg += step;
+                                    if (currentAngleDeg > effectiveEndAngleDeg && currentAngleDeg < effectiveEndAngleDeg + step - 1e-5) currentAngleDeg = effectiveEndAngleDeg; // Ensure last point
+                                }
+                            }
+                            trajectory.Points.AddRange(arcPoints);
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Could not calculate arc parameters for trajectory. PrimitiveType: {trajectory.PrimitiveType}. Defaulting to line segments if P1,P2,P3 exist.");
+                            // Fallback: add P1, P2, P3 as line segments if arc calculation fails
+                            if (trajectory.ArcPoint1 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint1.Coordinates.X, trajectory.ArcPoint1.Coordinates.Y));
+                            if (trajectory.ArcPoint2 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint2.Coordinates.X, trajectory.ArcPoint2.Coordinates.Y));
+                            if (trajectory.ArcPoint3 != null) trajectory.Points.Add(new Point(trajectory.ArcPoint3.Coordinates.X, trajectory.ArcPoint3.Coordinates.Y));
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Arc trajectory missing ArcPoint1/2/3 data.");
+                    }
                     break;
                 case "Circle":
                     trajectory.Points.AddRange(_cadService.ConvertCircleTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle));
@@ -858,6 +963,141 @@ namespace RobTeach.Views
     private void LineStartZTextBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateLineStartZFromTextBox();
+    }
+
+    // Removed LineStartZTextBox_LostFocus
+
+    private (DxfPoint Center, double Radius, double StartAngle, double EndAngle, DxfVector Normal, bool IsClockwise)? CalculateArcParametersFromThreePoints(DxfPoint p1, DxfPoint p2, DxfPoint p3, double tolerance = 1e-6)
+    {
+        // Implementation of 3-point to arc parameters calculation.
+        // This is a standard but somewhat complex geometric problem.
+        // Source for algorithm idea: https://www.ambrsoft.com/TrigoCalc/Circle3D.htm and various geometry resources.
+
+        // Check for collinearity or coincident points
+        // Vector P1P2
+        double v12x = p2.X - p1.X;
+        double v12y = p2.Y - p1.Y;
+        double v12z = p2.Z - p1.Z;
+
+        // Vector P1P3
+        double v13x = p3.X - p1.X;
+        double v13y = p3.Y - p1.Y;
+        double v13z = p3.Z - p1.Z;
+
+        // Cross product (P1P2) x (P1P3)
+        double crossX = v12y * v13z - v12z * v13y;
+        double crossY = v12z * v13x - v12x * v13z;
+        double crossZ = v12x * v13y - v12y * v13x;
+
+        double crossLengthSq = crossX * crossX + crossY * crossY + crossZ * crossZ;
+        if (crossLengthSq < tolerance * tolerance) // Points are collinear or too close
+        {
+            Debug.WriteLine("[WARNING] CalculateArcParametersFromThreePoints: Points are collinear or coincident.");
+            return null;
+        }
+
+        DxfVector normal = new DxfVector(crossX, crossY, crossZ).Normalize();
+
+        // For simplicity in this 2D focused app, project to XY plane if Z components are small,
+        // or enforce that the arc must lie in a plane parallel to XY.
+        // For now, let's assume points define an arc in a plane that could be tilted.
+        // The IxMilia.Dxf.DxfArc typically uses OCS (Object Coordinate System).
+        // For a simple 2D arc on XY plane, normal is (0,0,1) or (0,0,-1).
+
+        // Using a formula for circumcenter of a triangle in 2D (projected, assuming normal is mainly Z)
+        // This simplification might be an issue if the arc is not planar and parallel to XY.
+        // For a true 3D arc from 3 points, the plane of the arc must be found first.
+        // Given our app context, let's assume Z is constant or use the Z of P1.
+        // A robust 3D solution is more complex. For now, using a 2D projection + Z.
+
+        // Simplified 2D calculation (assuming Z is roughly constant, using p1.Z for the plane)
+        // This will not work correctly for arcs significantly tilted out of the XY plane.
+        // However, DxfArc itself is often defined in OCS that aligns with XY.
+        Point pt1 = new Point(p1.X, p1.Y);
+        Point pt2 = new Point(p2.X, p2.Y);
+        Point pt3 = new Point(p3.X, p3.Y);
+
+        double D = 2 * (pt1.X * (pt2.Y - pt3.Y) + pt2.X * (pt3.Y - pt1.Y) + pt3.X * (pt1.Y - pt2.Y));
+        if (Math.Abs(D) < tolerance) // Collinear in 2D projection
+        {
+            Debug.WriteLine("[WARNING] CalculateArcParametersFromThreePoints: Points are collinear in 2D projection.");
+            return null;
+        }
+
+        double pt1Sq = pt1.X * pt1.X + pt1.Y * pt1.Y;
+        double pt2Sq = pt2.X * pt2.X + pt2.Y * pt2.Y;
+        double pt3Sq = pt3.X * pt3.X + pt3.Y * pt3.Y;
+
+        double centerX = (pt1Sq * (pt2.Y - pt3.Y) + pt2Sq * (pt3.Y - pt1.Y) + pt3Sq * (pt1.Y - pt2.Y)) / D;
+        double centerY = (pt1Sq * (pt3.X - pt2.X) + pt2Sq * (pt1.X - pt3.X) + pt3Sq * (pt2.X - pt1.X)) / D;
+
+        // Assuming Z is constant, take from P1 for the center's Z.
+        // This is a simplification for primarily 2D DXF usage. True 3D arcs are more complex.
+        DxfPoint center = new DxfPoint(centerX, centerY, p1.Z);
+
+        double radius = Math.Sqrt(Math.Pow(pt1.X - centerX, 2) + Math.Pow(pt1.Y - centerY, 2));
+
+        double startAngle = Math.Atan2(p1.Y - center.Y, p1.X - center.X) * (180.0 / Math.PI);
+        double midAngle = Math.Atan2(p2.Y - center.Y, p2.X - center.X) * (180.0 / Math.PI);
+        double endAngle = Math.Atan2(p3.Y - center.Y, p3.X - center.X) * (180.0 / Math.PI);
+
+        // Normalize angles to 0-360
+        startAngle = (startAngle % 360 + 360) % 360;
+        midAngle = (midAngle % 360 + 360) % 360;
+        endAngle = (endAngle % 360 + 360) % 360;
+
+        // Determine sweep direction (IsClockwise)
+        // If (start -> mid -> end) is CCW, then sweep angle (end - start) should contain mid.
+        // If (start -> mid -> end) is CW, then sweep angle (start - end) should contain mid.
+        bool isClockwise;
+        double sweepAngle;
+
+        // Check CCW sweep from start to end
+        double sweepCCW = (endAngle - startAngle + 360) % 360;
+        double midRelativeToStartCCW = (midAngle - startAngle + 360) % 360;
+
+        if (midRelativeToStartCCW < sweepCCW) // Mid is within CCW sweep from start to end
+        {
+            isClockwise = false;
+            sweepAngle = sweepCCW; // DxfArc uses positive sweep angle typically
+        }
+        else // Mid must be within CW sweep from start to end
+        {
+            isClockwise = true;
+            // For DxfArc, angles are usually defined for CCW travel.
+            // If our 3 points define a CW arc, we swap start/end and use CCW sweep.
+            // Or, DxfArc handles CW if startAngle > endAngle and normal implies it.
+            // For now, let's keep it simple: if it's CW, swap P1 and P3 for DxfArc definition.
+            // This means DxfArc will always be defined CCW.
+            double tempAngle = startAngle;
+            startAngle = endAngle;
+            endAngle = tempAngle;
+            sweepAngle = (endAngle - startAngle + 360) % 360;
+            // The "isClockwise" flag can be used by the caller if needed, but DxfArc usually assumes CCW.
+        }
+        if (Math.Abs(sweepAngle) < tolerance || Math.Abs(sweepAngle - 360) < tolerance) {
+             // This might happen if points are very close or collinear after all.
+             Debug.WriteLine("[WARNING] CalculateArcParametersFromThreePoints: Calculated sweep angle is near 0 or 360, might indicate collinearity or issue.");
+             // Fallback to a line between P1 and P3 perhaps? For now, return null.
+             return null;
+        }
+
+
+        // For DxfArc, the normal vector is important for OCS.
+        // We calculated a geometric normal. For typical 2D DXF on XY plane, it's (0,0,1).
+        // If p1,p2,p3 are Z-coplanar, the normal will be along Z.
+        // If normal.Z < 0 and we want CCW interpretation for DxfArc, angles might need adjustment or normal flipped.
+        // For now, using calculated geometric normal. If it's mostly along -Z, flip it and angles.
+        if (normal.Z < 0) {
+            normal = new DxfVector(-normal.X, -normal.Y, -normal.Z);
+            double temp = startAngle;
+            startAngle = endAngle;
+            endAngle = temp;
+            isClockwise = !isClockwise; // Flip direction if normal was flipped
+        }
+
+
+        return (center, radius, startAngle, endAngle, normal, isClockwise);
     }
 
     // Removed LineStartZTextBox_LostFocus
@@ -1219,11 +1459,23 @@ namespace RobTeach.Views
                             break;
                         case DxfArc arc:
                             newTrajectory.PrimitiveType = "Arc";
-                            newTrajectory.ArcCenter = arc.Center;
-                            newTrajectory.ArcRadius = arc.Radius;
-                            newTrajectory.ArcStartAngle = arc.StartAngle;
-                            newTrajectory.ArcEndAngle = arc.EndAngle;
-                            newTrajectory.ArcNormal = arc.Normal;
+                            // Calculate P1, P2 (mid), P3 for the arc
+                            // P1 (Start Point)
+                            newTrajectory.ArcPoint1.Coordinates = arc.GetPoint(arc.StartAngle * Math.PI / 180.0);
+                            // P3 (End Point)
+                            newTrajectory.ArcPoint3.Coordinates = arc.GetPoint(arc.EndAngle * Math.PI / 180.0);
+                            // P2 (Mid Point)
+                            // Ensure angles are handled correctly for sweep (e.g. Start=350, End=10)
+                            double startAngleRad = arc.StartAngle * Math.PI / 180.0;
+                            double endAngleRad = arc.EndAngle * Math.PI / 180.0;
+                            if (endAngleRad < startAngleRad) // Adjust if end angle is "smaller" due to wrap around
+                            {
+                                endAngleRad += 2 * Math.PI;
+                            }
+                            double midAngleRad = (startAngleRad + endAngleRad) / 2.0;
+                            newTrajectory.ArcPoint2.Coordinates = arc.GetPoint(midAngleRad);
+                            // Rx, Ry, Rz for ArcPoint1, ArcPoint2, ArcPoint3 will default to 0.0
+                            // newTrajectory.ArcNormal = arc.Normal; // ArcNormal is no longer a direct property of Trajectory for arcs
                             break;
                         case DxfCircle circle:
                             newTrajectory.PrimitiveType = "Circle";
