@@ -52,29 +52,39 @@ namespace RobTeach.Services
         public List<System.Windows.Shapes.Shape> GetWpfShapesFromDxf(DxfFile dxfFile)
         {
             var wpfShapes = new List<System.Windows.Shapes.Shape>();
-            if (dxfFile == null) return wpfShapes;
+            if (dxfFile == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[JULES_DEBUG] CadService.GetWpfShapesFromDxf: dxfFile is null. Returning empty list.");
+                return wpfShapes;
+            }
+            System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf: Processing {dxfFile.Entities.Count()} entities from DXF document.");
+            int entityCounter = 0;
 
             // Process all entities
             foreach (var entity in dxfFile.Entities)
             {
+                System.Windows.Shapes.Shape? wpfShape = null; // Use nullable Shape
+                string entityIdentifier = $"Handle: {entity.HandleOrOwnerHandle}, Type: {entity.GetType().Name}";
+                System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf: Entity {entityCounter} [{entityIdentifier}]");
+
                 switch (entity)
                 {
                     case DxfLine dxfLine:
-                        var wpfLine = new System.Windows.Shapes.Line
+                        wpfShape = new System.Windows.Shapes.Line
                         {
                             X1 = dxfLine.P1.X, Y1 = dxfLine.P1.Y,
                             X2 = dxfLine.P2.X, Y2 = dxfLine.P2.Y,
                             IsHitTestVisible = true
                         };
-                        wpfShapes.Add(wpfLine);
+                        System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   Converted DxfLine to WPF Line.");
                         break;
 
                     case DxfArc dxfArc:
-                        var arcPath = CreateArcPath(dxfArc);
-                        if (arcPath != null)
-                        {
-                            wpfShapes.Add(arcPath);
-                        }
+                        wpfShape = CreateArcPath(dxfArc);
+                        if (wpfShape != null)
+                            System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   Converted DxfArc to WPF Path.");
+                        else
+                            System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   FAILED to convert DxfArc to WPF Path.");
                         break;
 
                     case DxfCircle dxfCircle:
@@ -83,17 +93,30 @@ namespace RobTeach.Services
                             dxfCircle.Radius,
                             dxfCircle.Radius
                         );
-                        var circlePath = new System.Windows.Shapes.Path
+                        wpfShape = new System.Windows.Shapes.Path
                         {
                             Data = ellipseGeometry,
                             Fill = Brushes.Transparent,
                             IsHitTestVisible = true
                         };
-                        wpfShapes.Add(circlePath);
+                        System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   Converted DxfCircle to WPF Path (EllipseGeometry).");
+                        break;
+                    // IMPORTANT: Add case for DxfLwPolyline if it's used in your DXFs
+                    case DxfLwPolyline lwPoly:
+                        // Placeholder: Implement DxfLwPolyline to WPF Path conversion
+                        // wpfShape = ConvertLwPolylineToWpfPath(lwPoly); // You'll need to create this method
+                        System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   DxfLwPolyline conversion not yet implemented. Entity skipped.");
+                        break;
+                    default:
+                        System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf:   EntityType '{entity.GetType().Name}' not explicitly supported for WPF shape conversion. Entity skipped.");
                         break;
                 }
+                // Add the created shape (or null if conversion failed or type not supported)
+                // This ensures the returned list has a 1:1 correspondence with dxfFile.Entities
+                wpfShapes.Add(wpfShape);
+                entityCounter++;
             }
-
+            System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf: Finished processing. Returning list with {wpfShapes.Count} elements (Shape or null).");
             return wpfShapes;
         }
 
@@ -102,6 +125,10 @@ namespace RobTeach.Services
         /// </summary>
         private System.Windows.Shapes.Path? CreateArcPath(DxfArc dxfArc)
         {
+            if (dxfArc == null) {
+                System.Diagnostics.Debug.WriteLine("[JULES_DEBUG] CreateArcPath: Input DxfArc is null.");
+                return null;
+            }
             try
             {
                 double startAngleRad = dxfArc.StartAngle * Math.PI / 180.0;

@@ -1222,20 +1222,42 @@ namespace RobTeach.Views
                     // Note: IxMilia.Dxf doesn't expose Handle property directly
                     // We'll skip handle mapping for now
 
+                    Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: Document has {_currentDxfDocument.Entities.Count()} entities.");
                     List<System.Windows.Shapes.Shape> wpfShapes = _cadService.GetWpfShapesFromDxf(_currentDxfDocument);
+                    Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: CadService.GetWpfShapesFromDxf returned {wpfShapes.Count} shapes.");
                     int shapeIndex = 0;
-                    
+                    int entityIndex = 0;
                     foreach(var entity in _currentDxfDocument.Entities)
                     {
-                        if (shapeIndex < wpfShapes.Count && wpfShapes[shapeIndex] != null) {
+                        string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.HandleOrOwnerHandle}";
+                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
+                        if (shapeIndex < wpfShapes.Count)
+                        {
                             var wpfShape = wpfShapes[shapeIndex];
-                            wpfShape.Stroke = DefaultStrokeBrush; 
-                            wpfShape.StrokeThickness = DefaultStrokeThickness;
-                            wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
-                            _wpfShapeToDxfEntityMap[wpfShape] = entity;
-                            CadCanvas.Children.Add(wpfShape);
-                            shapeIndex++; 
+                            if (wpfShape != null)
+                            {
+                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
+                                wpfShape.Stroke = DefaultStrokeBrush;
+                                wpfShape.StrokeThickness = DefaultStrokeThickness;
+                                wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
+                                _wpfShapeToDxfEntityMap[wpfShape] = entity;
+                                CadCanvas.Children.Add(wpfShape);
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WPF Shape for Entity {entityIndex} (DXF: {entityIdentifier}) is NULL from CadService.");
+                            }
                         }
+                        else
+                        {
+                             Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: No corresponding WPF shape in list for Entity {entityIndex} (DXF: {entityIdentifier}). Shape list too short.");
+                        }
+                        shapeIndex++;
+                        entityIndex++;
+                    }
+                    if (wpfShapes.Count < _currentDxfDocument.Entities.Count())
+                    {
+                        Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: WARNING - Mismatch count. DXF Entities: {_currentDxfDocument.Entities.Count()}, WPF Shapes: {wpfShapes.Count}. Some DXF entities may not have been drawn.");
                     }
 
                     _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
@@ -1620,20 +1642,42 @@ namespace RobTeach.Views
 
                             if (_currentDxfDocument != null)
                             {
+                                Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Document has {_currentDxfDocument.Entities.Count()} entities.");
                                 List<System.Windows.Shapes.Shape> wpfShapes = _cadService.GetWpfShapesFromDxf(_currentDxfDocument);
+                                Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: CadService.GetWpfShapesFromDxf returned {wpfShapes.Count} shapes.");
                                 int shapeIndex = 0;
+                                int entityIndex = 0;
                                 foreach(var entity in _currentDxfDocument.Entities)
                                 {
-                                    if (shapeIndex < wpfShapes.Count && wpfShapes[shapeIndex] != null)
+                                    string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.HandleOrOwnerHandle}"; // Assuming HandleOrOwnerHandle provides some uniqueness
+                                    Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
+                                    if (shapeIndex < wpfShapes.Count)
                                     {
                                         var wpfShape = wpfShapes[shapeIndex];
-                                        wpfShape.Stroke = DefaultStrokeBrush;
-                                        wpfShape.StrokeThickness = DefaultStrokeThickness;
-                                        wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
-                                        _wpfShapeToDxfEntityMap[wpfShape] = entity;
-                                        CadCanvas.Children.Add(wpfShape);
-                                        shapeIndex++;
+                                        if (wpfShape != null)
+                                        {
+                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity {entityIndex} is {wpfShape.GetType().Name}. Adding to canvas and map.");
+                                            wpfShape.Stroke = DefaultStrokeBrush;
+                                            wpfShape.StrokeThickness = DefaultStrokeThickness;
+                                            wpfShape.MouseLeftButtonDown += OnCadEntityClicked;
+                                            _wpfShapeToDxfEntityMap[wpfShape] = entity;
+                                            CadCanvas.Children.Add(wpfShape);
+                                        }
+                                        else
+                                        {
+                                            Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WPF Shape for Entity {entityIndex} (DXF: {entityIdentifier}) is NULL from CadService.");
+                                        }
                                     }
+                                    else
+                                    {
+                                        Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: No corresponding WPF shape in list for Entity {entityIndex} (DXF: {entityIdentifier}). Shape list too short.");
+                                    }
+                                    shapeIndex++; // Increment shapeIndex regardless to keep it aligned with wpfShapes list if it's 1:1
+                                    entityIndex++;
+                                }
+                                if (wpfShapes.Count < _currentDxfDocument.Entities.Count())
+                                {
+                                     Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: WARNING - Mismatch count. DXF Entities: {_currentDxfDocument.Entities.Count()}, WPF Shapes: {wpfShapes.Count}. Some DXF entities may not have been drawn.");
                                 }
                                 _dxfBoundingBox = GetDxfBoundingBox(_currentDxfDocument);
                                 PerformFitToView();
@@ -2702,8 +2746,8 @@ namespace RobTeach.Views
                     if (matchedEntity != null)
                     {
                         trajectory.OriginalDxfEntity = matchedEntity; // Update reference to the live entity from the document
-                        availableDocEntities.RemoveAt(matchedEntityIndexInAvailableList); // Remove from available to prevent re-matching
-                        Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Reconciled trajectory entity: {matchedEntity.GetType().Name}");
+                        // availableDocEntities.RemoveAt(matchedEntityIndexInAvailableList); // Allow re-matching for shared entities across passes
+                        Debug.WriteLine($"[DEBUG] ReconcileTrajectoryEntities: Reconciled trajectory entity: {matchedEntity.GetType().Name} (Index in availableDocEntities was {matchedEntityIndexInAvailableList}, not removing).");
                     }
                     else
                     {
