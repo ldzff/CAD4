@@ -1229,7 +1229,7 @@ namespace RobTeach.Views
                     int entityIndex = 0;
                     foreach(var entity in _currentDxfDocument.Entities)
                     {
-                        string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.HandleOrOwnerHandle}";
+                        string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}";
                         Debug.WriteLine($"[JULES_DEBUG] LoadDxfButton_Click - Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
                         if (shapeIndex < wpfShapes.Count)
                         {
@@ -1649,7 +1649,7 @@ namespace RobTeach.Views
                                 int entityIndex = 0;
                                 foreach(var entity in _currentDxfDocument.Entities)
                                 {
-                                    string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.HandleOrOwnerHandle}"; // Assuming HandleOrOwnerHandle provides some uniqueness
+                                    string entityIdentifier = $"EntityType: {entity.GetType().Name}, Handle: {entity.Handle.ToString("X")}";
                                     Debug.WriteLine($"[JULES_DEBUG] Drawing Shapes: Processing DXF Entity {entityIndex} - {entityIdentifier}");
                                     if (shapeIndex < wpfShapes.Count)
                                     {

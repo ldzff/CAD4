@@ -64,7 +64,7 @@ namespace RobTeach.Services
             foreach (var entity in dxfFile.Entities)
             {
                 System.Windows.Shapes.Shape? wpfShape = null; // Use nullable Shape
-                string entityIdentifier = $"Handle: {entity.HandleOrOwnerHandle}, Type: {entity.GetType().Name}";
+                string entityIdentifier = $"Handle: {entity.Handle.ToString("X")}, Type: {entity.GetType().Name}";
                 System.Diagnostics.Debug.WriteLine($"[JULES_DEBUG] CadService.GetWpfShapesFromDxf: Entity {entityCounter} [{entityIdentifier}]");
 
                 switch (entity)
