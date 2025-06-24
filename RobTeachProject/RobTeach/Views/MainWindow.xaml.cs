@@ -1924,10 +1924,11 @@ namespace RobTeach.Views
                     int itemsAddedCount = 0;
                     foreach (DxfEntity hitDxfEntity in marqueeHitEntities)
                     {
-                        bool alreadySelected = currentPass.Trajectories.Any(t => t.OriginalDxfEntity == hitDxfEntity);
+                        // Use geometric comparison to check if already selected, due to potential instance differences
+                        bool alreadySelected = currentPass.Trajectories.Any(t => AreEntitiesGeometricallyEquivalent(t.OriginalDxfEntity, hitDxfEntity));
                         if (!alreadySelected)
                         {
-                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Normal Marquee - Additive): Adding {hitDxfEntity.GetType().Name}");
+                            Debug.WriteLine($"[DEBUG] CadCanvas_MouseUp (Normal Marquee - Additive): Adding {hitDxfEntity.GetType().Name} as it's not geometrically equivalent to any existing selected trajectory's entity.");
                             var newTrajectory = new Trajectory
                             {
                                 OriginalDxfEntity = hitDxfEntity,
@@ -2262,32 +2263,70 @@ namespace RobTeach.Views
 
         private bool AreEntitiesGeometricallyEquivalent(DxfEntity entity1, DxfEntity entity2, double tolerance = 0.001)
         {
-            if (entity1 == null || entity2 == null || entity1.GetType() != entity2.GetType())
+            if (entity1 == null || entity2 == null)
+            {
+                Debug.WriteLineIf(entity1 == null || entity2 == null, $"[DEBUG] AreEntitiesGeometricallyEquivalent: One or both entities are null. Entity1: {(entity1 == null ? "null" : entity1.GetType().Name)}, Entity2: {(entity2 == null ? "null" : entity2.GetType().Name)}");
                 return false;
+            }
+            if (entity1.GetType() != entity2.GetType())
+            {
+                Debug.WriteLine($"[DEBUG] AreEntitiesGeometricallyEquivalent: Entity types differ: {entity1.GetType().Name} vs {entity2.GetType().Name}");
+                return false;
+            }
+
+            Debug.WriteLine($"[DEBUG] AreEntitiesGeometricallyEquivalent: Comparing two {entity1.GetType().Name}");
 
             switch (entity1)
             {
                 case DxfLine line1 when entity2 is DxfLine line2:
-                    return (PointEquals(line1.P1, line2.P1, tolerance) && PointEquals(line1.P2, line2.P2, tolerance)) ||
-                           (PointEquals(line1.P1, line2.P2, tolerance) && PointEquals(line1.P2, line2.P1, tolerance));
+                    bool p1p1 = PointEquals(line1.P1, line2.P1, tolerance);
+                    bool p2p2 = PointEquals(line1.P2, line2.P2, tolerance);
+                    bool p1p2 = PointEquals(line1.P1, line2.P2, tolerance);
+                    bool p2p1 = PointEquals(line1.P2, line2.P1, tolerance);
+                    Debug.WriteLine($"[DEBUG] LineCompare: L1P1={line1.P1}, L1P2={line1.P2} | L2P1={line2.P1}, L2P2={line2.P2}");
+                    Debug.WriteLine($"[DEBUG] LineCompare: (P1s match: {p1p1}, P2s match: {p2p2}) OR (P1-L2P2 match: {p1p2}, P2-L2P1 match: {p2p1})");
+                    return (p1p1 && p2p2) || (p1p2 && p2p1);
+
                 case DxfCircle circle1 when entity2 is DxfCircle circle2:
-                    return PointEquals(circle1.Center, circle2.Center, tolerance) && Math.Abs(circle1.Radius - circle2.Radius) < tolerance;
+                    bool centerMatch = PointEquals(circle1.Center, circle2.Center, tolerance);
+                    bool radiusMatch = Math.Abs(circle1.Radius - circle2.Radius) < tolerance;
+                    Debug.WriteLine($"[DEBUG] CircleCompare: C1=({circle1.Center}, R={circle1.Radius}) | C2=({circle2.Center}, R={circle2.Radius})");
+                    Debug.WriteLine($"[DEBUG] CircleCompare: CenterMatch={centerMatch}, RadiusMatch={radiusMatch}");
+                    return centerMatch && radiusMatch;
+
                 case DxfArc arc1 when entity2 is DxfArc arc2:
-                    // Normalize angles for comparison if necessary, or compare with tolerance
-                    // This basic comparison might fail if angles are e.g. 0 and 360.
-                    // A more robust comparison would involve checking points on the arc or geometric properties.
-                    return PointEquals(arc1.Center, arc2.Center, tolerance) &&
-                           Math.Abs(arc1.Radius - arc2.Radius) < tolerance &&
-                           (Math.Abs(arc1.StartAngle - arc2.StartAngle) % 360 < tolerance) &&
-                           (Math.Abs(arc1.EndAngle - arc2.EndAngle) % 360 < tolerance);
+                    // TODO: Robust angle comparison (normalize to 0-360, handle wrap-around)
+                    // For now, using modulo which is not perfectly robust for all cases like 0 vs 360.
+                    // A better way: convert angles to vectors or check if one angle is equivalent to other + k*360.
+                    double normalizedStartAngle1 = (arc1.StartAngle % 360 + 360) % 360;
+                    double normalizedEndAngle1 = (arc1.EndAngle % 360 + 360) % 360;
+                    double normalizedStartAngle2 = (arc2.StartAngle % 360 + 360) % 360;
+                    double normalizedEndAngle2 = (arc2.EndAngle % 360 + 360) % 360;
+
+                    bool arcCenterMatch = PointEquals(arc1.Center, arc2.Center, tolerance);
+                    bool arcRadiusMatch = Math.Abs(arc1.Radius - arc2.Radius) < tolerance;
+                    bool arcStartAngleMatch = Math.Abs(normalizedStartAngle1 - normalizedStartAngle2) < tolerance || Math.Abs(normalizedStartAngle1 - normalizedStartAngle2 - 360) < tolerance || Math.Abs(normalizedStartAngle1 - normalizedStartAngle2 + 360) < tolerance;
+                    bool arcEndAngleMatch = Math.Abs(normalizedEndAngle1 - normalizedEndAngle2) < tolerance || Math.Abs(normalizedEndAngle1 - normalizedEndAngle2 - 360) < tolerance || Math.Abs(normalizedEndAngle1 - normalizedEndAngle2 + 360) < tolerance;
+
+                    Debug.WriteLine($"[DEBUG] ArcCompare: A1=C({arc1.Center}),R({arc1.Radius}),SA({arc1.StartAngle}),EA({arc1.EndAngle})");
+                    Debug.WriteLine($"[DEBUG] ArcCompare: A2=C({arc2.Center}),R({arc2.Radius}),SA({arc2.StartAngle}),EA({arc2.EndAngle})");
+                    Debug.WriteLine($"[DEBUG] ArcCompare: NormA1=SA({normalizedStartAngle1}),EA({normalizedEndAngle1}) | NormA2=SA({normalizedStartAngle2}),EA({normalizedEndAngle2})");
+                    Debug.WriteLine($"[DEBUG] ArcCompare: CenterMatch={arcCenterMatch}, RadiusMatch={arcRadiusMatch}, StartAngleMatch={arcStartAngleMatch}, EndAngleMatch={arcEndAngleMatch}");
+                    return arcCenterMatch && arcRadiusMatch && arcStartAngleMatch && arcEndAngleMatch;
+
                 case DxfLwPolyline poly1 when entity2 is DxfLwPolyline poly2:
+                    Debug.WriteLine($"[DEBUG] LWPolylineCompare: VCount1={poly1.Vertices.Count}, VCount2={poly2.Vertices.Count}, Closed1={poly1.IsClosed}, Closed2={poly2.IsClosed}");
                     if (poly1.Vertices.Count != poly2.Vertices.Count || poly1.IsClosed != poly2.IsClosed) return false;
                     for(int i=0; i < poly1.Vertices.Count; i++)
                     {
-                        if (poly1.Vertices[i].X != poly2.Vertices[i].X || // Using exact match for now, could add tolerance
-                            poly1.Vertices[i].Y != poly2.Vertices[i].Y ||
-                            // poly1.Vertices[i].Z != poly2.Vertices[i].Z || // LwPolyline vertices are 2D (X,Y with Z usually 0 from elevation)
-                            Math.Abs(poly1.Vertices[i].Bulge - poly2.Vertices[i].Bulge) > tolerance) // Bulge with tolerance
+                        var v1 = poly1.Vertices[i];
+                        var v2 = poly2.Vertices[i];
+                        // LwPolyline vertices are DxfLwPolylineVertex, which have X, Y, Bulge. Z is from polyline's Elevation.
+                        // Using PointEquals for X,Y comparison by creating temporary DxfPoints.
+                        bool xyMatch = PointEquals(new DxfPoint(v1.X, v1.Y, 0), new DxfPoint(v2.X, v2.Y, 0), tolerance);
+                        bool bulgeMatch = Math.Abs(v1.Bulge - v2.Bulge) < tolerance;
+                        Debug.WriteLine($"[DEBUG] LWPolylineCompare: V{i} P1=({v1.X},{v1.Y},B={v1.Bulge}) | P2=({v2.X},{v2.Y},B={v2.Bulge}) | XYMatch={xyMatch}, BulgeMatch={bulgeMatch}");
+                        if (!xyMatch || !bulgeMatch)
                         {
                             return false;
                         }
