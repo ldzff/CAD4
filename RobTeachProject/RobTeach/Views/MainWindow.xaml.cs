@@ -565,22 +565,51 @@ namespace RobTeach.Views
             {
                 _trajectoryInDetailView = selectedTrajectory; // Assign to the new field
 
-                // Enable all nozzle checkboxes
-                TrajectoryUpperNozzleEnabledCheckBox.IsEnabled = true;
-                TrajectoryLowerNozzleEnabledCheckBox.IsEnabled = true;
-                // Gas/Liquid enabled state will be set by their respective 'Enabled' checkbox change handlers
+                // Enable GasOn and LiquidOn checkboxes by default when a trajectory is selected.
+                // Specific IsEnabled state for GasOn will be set based on LiquidOn state.
+                TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true;
+                TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = true;
+                TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true;
+                TrajectoryLowerNozzleLiquidOnCheckBox.IsEnabled = true;
 
                 // Set IsChecked status for nozzle settings from selected trajectory
-                TrajectoryUpperNozzleEnabledCheckBox.IsChecked = selectedTrajectory.UpperNozzleEnabled;
-                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleGasOn;
+                // TrajectoryUpperNozzleEnabledCheckBox.IsChecked = selectedTrajectory.UpperNozzleEnabled; // Hidden
                 TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleLiquidOn;
-                TrajectoryLowerNozzleEnabledCheckBox.IsChecked = selectedTrajectory.LowerNozzleEnabled;
-                TrajectoryLowerNozzleGasOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleGasOn;
-                TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleLiquidOn;
+                // Set GasOn AFTER LiquidOn, then apply logic
+                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = selectedTrajectory.UpperNozzleGasOn;
 
-                // Call handlers to correctly set IsEnabled for Gas/Liquid checkboxes
-                TrajectoryUpperNozzleEnabledCheckBox_Changed(null, null);
-                TrajectoryLowerNozzleEnabledCheckBox_Changed(null, null);
+                // TrajectoryLowerNozzleEnabledCheckBox.IsChecked = selectedTrajectory.LowerNozzleEnabled; // Hidden
+                TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleLiquidOn;
+                // Set GasOn AFTER LiquidOn, then apply logic
+                TrajectoryLowerNozzleGasOnCheckBox.IsChecked = selectedTrajectory.LowerNozzleGasOn;
+
+                // Apply interdependency logic for Upper Nozzle
+                if (TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked == true)
+                {
+                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true; // Ensure Gas is on if Liquid is on
+                    selectedTrajectory.UpperNozzleGasOn = true; // Sync model if needed due to this rule
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false;
+                }
+                else
+                {
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true;
+                }
+
+                // Apply interdependency logic for Lower Nozzle
+                if (TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked == true)
+                {
+                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true; // Ensure Gas is on if Liquid is on
+                    selectedTrajectory.LowerNozzleGasOn = true; // Sync model if needed due to this rule
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false;
+                }
+                else
+                {
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true;
+                }
+
+                // The old EnabledCheckBox_Changed handlers are no longer needed for this.
+                // TrajectoryUpperNozzleEnabledCheckBox_Changed(null, null); // Obsolete
+                // TrajectoryLowerNozzleEnabledCheckBox_Changed(null, null); // Obsolete
 
                 // Geometry settings part
                 TrajectoryIsReversedCheckBox.IsChecked = selectedTrajectory.IsReversed;
@@ -705,26 +734,17 @@ namespace RobTeach.Views
 
         private void TrajectoryUpperNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
         {
-            bool isEnabled = TrajectoryUpperNozzleEnabledCheckBox.IsChecked ?? false;
-            TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = isEnabled;
-            TrajectoryUpperNozzleLiquidOnCheckBox.IsEnabled = isEnabled;
-
+            // This checkbox is now hidden (Visibility="Collapsed" in XAML).
+            // Its logic for enabling/disabling GasOn/LiquidOn checkboxes is superseded by the new interdependency logic.
+            // We still need to update the model if this event were somehow triggered,
+            // though it shouldn't be if the CheckBox is collapsed.
+            // For safety, or if it's decided to use the model property differently:
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                selectedTrajectory.UpperNozzleEnabled = isEnabled;
-                if (!isEnabled)
-                {
-                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = false; // Also uncheck
-                    TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = false; // Also uncheck
-                    selectedTrajectory.UpperNozzleGasOn = false;
-                    selectedTrajectory.UpperNozzleLiquidOn = false;
-                }
-                isConfigurationDirty = true;
-            }
-            else if (!isEnabled) // No trajectory selected, ensure UI is consistent
-            {
-                TrajectoryUpperNozzleGasOnCheckBox.IsChecked = false;
-                TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked = false;
+                // selectedTrajectory.UpperNozzleEnabled = TrajectoryUpperNozzleEnabledCheckBox.IsChecked ?? false;
+                // The model's UpperNozzleEnabled might be re-purposed or removed later.
+                // For now, we won't automatically uncheck Gas/Liquid here based on this hidden checkbox.
+                // isConfigurationDirty = true; // Only if model property is still relevant and changed.
             }
         }
 
@@ -741,33 +761,33 @@ namespace RobTeach.Views
         {
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                selectedTrajectory.UpperNozzleLiquidOn = TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked ?? false;
+                bool isLiquidOn = TrajectoryUpperNozzleLiquidOnCheckBox.IsChecked ?? false;
+                selectedTrajectory.UpperNozzleLiquidOn = isLiquidOn;
+
+                if (isLiquidOn)
+                {
+                    TrajectoryUpperNozzleGasOnCheckBox.IsChecked = true; // Force Gas On
+                    selectedTrajectory.UpperNozzleGasOn = true; // Update model
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = false; // Disable Gas checkbox
+                }
+                else
+                {
+                    TrajectoryUpperNozzleGasOnCheckBox.IsEnabled = true; // Enable Gas checkbox
+                    // Gas state (selectedTrajectory.UpperNozzleGasOn) remains as it was or as user sets it via its own checkbox
+                }
                 isConfigurationDirty = true;
             }
         }
 
         private void TrajectoryLowerNozzleEnabledCheckBox_Changed(object sender, RoutedEventArgs e)
         {
-            bool isEnabled = TrajectoryLowerNozzleEnabledCheckBox.IsChecked ?? false;
-            TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = isEnabled;
-            TrajectoryLowerNozzleLiquidOnCheckBox.IsEnabled = isEnabled;
-
+            // This checkbox is now hidden (Visibility="Collapsed" in XAML).
+            // Logic is superseded by new interdependency.
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                selectedTrajectory.LowerNozzleEnabled = isEnabled;
-                if (!isEnabled)
-                {
-                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false; // Also uncheck
-                    TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false; // Also uncheck
-                    selectedTrajectory.LowerNozzleGasOn = false;
-                    selectedTrajectory.LowerNozzleLiquidOn = false;
-                }
-                isConfigurationDirty = true;
-            }
-            else if (!isEnabled) // No trajectory selected, ensure UI is consistent
-            {
-                 TrajectoryLowerNozzleGasOnCheckBox.IsChecked = false;
-                 TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked = false;
+                // selectedTrajectory.LowerNozzleEnabled = TrajectoryLowerNozzleEnabledCheckBox.IsChecked ?? false;
+                // The model's LowerNozzleEnabled might be re-purposed or removed later.
+                // isConfigurationDirty = true; // Only if model property is still relevant and changed.
             }
         }
 
@@ -784,7 +804,20 @@ namespace RobTeach.Views
         {
             if (CurrentPassTrajectoriesListBox.SelectedItem is Trajectory selectedTrajectory)
             {
-                selectedTrajectory.LowerNozzleLiquidOn = TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked ?? false;
+                bool isLiquidOn = TrajectoryLowerNozzleLiquidOnCheckBox.IsChecked ?? false;
+                selectedTrajectory.LowerNozzleLiquidOn = isLiquidOn;
+
+                if (isLiquidOn)
+                {
+                    TrajectoryLowerNozzleGasOnCheckBox.IsChecked = true; // Force Gas On
+                    selectedTrajectory.LowerNozzleGasOn = true; // Update model
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = false; // Disable Gas checkbox
+                }
+                else
+                {
+                    TrajectoryLowerNozzleGasOnCheckBox.IsEnabled = true; // Enable Gas checkbox
+                    // Gas state (selectedTrajectory.LowerNozzleGasOn) remains as it was
+                }
                 isConfigurationDirty = true;
             }
         }

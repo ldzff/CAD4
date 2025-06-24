@@ -73,14 +73,14 @@
                 <StackPanel Orientation="Vertical">
                     <GroupBox Header="Upper Nozzle" Margin="2" Padding="3" Foreground="{StaticResource DefaultTextBrush}">
                         <StackPanel Orientation="Vertical">
-                            <CheckBox Name="TrajectoryUpperNozzleEnabledCheckBox" Content="Enabled" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
+                            <CheckBox Name="TrajectoryUpperNozzleEnabledCheckBox" Content="Enabled" Margin="1" Foreground="{StaticResource DefaultTextBrush}" Visibility="Collapsed"/>
                             <CheckBox Name="TrajectoryUpperNozzleGasOnCheckBox" Content="Gas On" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
                             <CheckBox Name="TrajectoryUpperNozzleLiquidOnCheckBox" Content="Liquid On" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Lower Nozzle" Margin="2" Padding="3" Foreground="{StaticResource DefaultTextBrush}">
                         <StackPanel Orientation="Vertical">
-                            <CheckBox Name="TrajectoryLowerNozzleEnabledCheckBox" Content="Enabled" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
+                            <CheckBox Name="TrajectoryLowerNozzleEnabledCheckBox" Content="Enabled" Margin="1" Foreground="{StaticResource DefaultTextBrush}" Visibility="Collapsed"/>
                             <CheckBox Name="TrajectoryLowerNozzleGasOnCheckBox" Content="Gas On" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
                             <CheckBox Name="TrajectoryLowerNozzleLiquidOnCheckBox" Content="Liquid On" Margin="1" Foreground="{StaticResource DefaultTextBrush}"/>
                         </StackPanel>
