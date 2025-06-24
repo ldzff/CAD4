@@ -52,10 +52,11 @@ namespace RobTeach.Models
         public TrajectoryPointWithAngles ArcPoint2 { get; set; } // Midpoint on arc
         public TrajectoryPointWithAngles ArcPoint3 { get; set; }
 
-        // Geometric parameters for Circle
-        public DxfPoint CircleCenter { get; set; } = DxfPoint.Origin;
-        public double CircleRadius { get; set; } = 0.0;
-        public DxfVector CircleNormal { get; set; } = DxfVector.ZAxis;
+        // Geometric parameters for Circle (3-point definition)
+        public TrajectoryPointWithAngles CirclePoint1 { get; set; }
+        public TrajectoryPointWithAngles CirclePoint2 { get; set; }
+        public TrajectoryPointWithAngles CirclePoint3 { get; set; }
+
 
         /// <summary>
         /// Gets or sets a value indicating whether the trajectory's conventional direction should be reversed.
@@ -115,6 +116,10 @@ namespace RobTeach.Models
             ArcPoint1 = new TrajectoryPointWithAngles();
             ArcPoint2 = new TrajectoryPointWithAngles();
             ArcPoint3 = new TrajectoryPointWithAngles();
+
+            CirclePoint1 = new TrajectoryPointWithAngles();
+            CirclePoint2 = new TrajectoryPointWithAngles();
+            CirclePoint3 = new TrajectoryPointWithAngles();
         }
 
         public override string ToString()
@@ -131,7 +136,7 @@ namespace RobTeach.Models
                     // Optionally, could include angles if they are relevant for display here
                     break;
                 case "Circle":
-                    details = $"Circle (Cen:{CircleCenter}, R:{CircleRadius})";
+                    details = $"Circle (P1:{CirclePoint1.Coordinates}, P2:{CirclePoint2.Coordinates}, P3:{CirclePoint3.Coordinates})";
                     break;
                 default:
                     // Use EntityType if PrimitiveType is not set or recognized, then fallback to DXF entity type

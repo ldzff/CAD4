@@ -378,30 +378,35 @@ namespace RobTeach.Services
     /// </summary>
     public List<System.Windows.Point> ConvertCircleTrajectoryToPoints(Trajectory trajectory, double resolutionDegrees)
     {
+        // This method is now superseded by logic in MainWindow.PopulateTrajectoryPoints for circles,
+        // which uses the new 3-point circle definition.
+        // The Trajectory object no longer has CircleCenter or CircleRadius directly.
+        // Keeping the method signature for now but it will not compile/work as is.
+        // It should be removed or refactored if CadService needs to generate points from a 3-point defined circle trajectory.
+        System.Diagnostics.Debug.WriteLine("[WARNING] CadService.ConvertCircleTrajectoryToPoints is called but is based on obsolete Trajectory properties.");
         List<System.Windows.Point> points = new List<System.Windows.Point>();
         if (trajectory == null || trajectory.PrimitiveType != "Circle" || resolutionDegrees <= 0) return points;
 
-        // Note: trajectory.CircleNormal is available if needed for 3D calculations.
-        // IsReversed is not currently affecting circle point generation.
-        for (double angle = 0; angle < 360.0; angle += resolutionDegrees)
-        {
-            double radAngle = angle * Math.PI / 180.0;
-            double x = trajectory.CircleCenter.X + trajectory.CircleRadius * Math.Cos(radAngle);
-            double y = trajectory.CircleCenter.Y + trajectory.CircleRadius * Math.Sin(radAngle);
-            points.Add(new System.Windows.Point(x, y));
-        }
-        // Ensure the circle is closed by adding the start point if it's not already the last point due to resolution.
-        if (points.Count > 0)
-        {
-             if (Math.Abs(points.Last().X - (trajectory.CircleCenter.X + trajectory.CircleRadius)) > 0.001 ||
-                 Math.Abs(points.Last().Y - trajectory.CircleCenter.Y) > 0.001)
-                 {
-                      points.Add(new System.Windows.Point(trajectory.CircleCenter.X + trajectory.CircleRadius, trajectory.CircleCenter.Y));
-                 }
-        }
-
-
-        return points;
+        // The following code will not compile as trajectory.CircleCenter and trajectory.CircleRadius are removed.
+        // // Note: trajectory.CircleNormal is available if needed for 3D calculations.
+        // // IsReversed is not currently affecting circle point generation.
+        // for (double angle = 0; angle < 360.0; angle += resolutionDegrees)
+        // {
+        //     double radAngle = angle * Math.PI / 180.0;
+        //     double x = trajectory.CircleCenter.X + trajectory.CircleRadius * Math.Cos(radAngle);
+        //     double y = trajectory.CircleCenter.Y + trajectory.CircleRadius * Math.Sin(radAngle);
+        //     points.Add(new System.Windows.Point(x, y));
+        // }
+        // // Ensure the circle is closed by adding the start point if it's not already the last point due to resolution.
+        // if (points.Count > 0)
+        // {
+        //      if (Math.Abs(points.Last().X - (trajectory.CircleCenter.X + trajectory.CircleRadius)) > 0.001 ||
+        //          Math.Abs(points.Last().Y - trajectory.CircleCenter.Y) > 0.001)
+        //          {
+        //               points.Add(new System.Windows.Point(trajectory.CircleCenter.X + trajectory.CircleRadius, trajectory.CircleCenter.Y));
+        //          }
+        // }
+        return points; // Returns empty list as the functional code is commented out.
     }
 } // This closes the CadService class
 

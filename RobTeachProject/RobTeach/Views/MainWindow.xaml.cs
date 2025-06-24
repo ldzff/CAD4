@@ -657,14 +657,15 @@ namespace RobTeach.Views
                 }
                 else if (selectedTrajectory.PrimitiveType == "Circle")
                 {
-                    CircleCenterZTextBox.Text = selectedTrajectory.CircleCenter.Z.ToString("F3");
+                    // Display Z of CirclePoint1. Assume P1, P2, P3 are co-planar for Z adjustment via this UI.
+                    CircleCenterZTextBox.Text = selectedTrajectory.CirclePoint1.Coordinates.Z.ToString("F3");
                 }
 
                 // Set Tags for Z-coordinate TextBoxes
                 LineStartZTextBox.Tag = selectedTrajectory;
                 LineEndZTextBox.Tag = selectedTrajectory;
                 ArcCenterZTextBox.Tag = selectedTrajectory;
-                CircleCenterZTextBox.Tag = selectedTrajectory;
+                CircleCenterZTextBox.Tag = selectedTrajectory; // Still use CircleCenterZTextBox for the tag
             }
             else // No trajectory selected
             {
@@ -837,7 +838,56 @@ namespace RobTeach.Views
                     }
                     break;
                 case "Circle":
-                    trajectory.Points.AddRange(_cadService.ConvertCircleTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle));
+                    // trajectory.Points.AddRange(_cadService.ConvertCircleTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle)); // Old way
+                    var circleParams = GeometryUtils.CalculateCircleCenterRadiusFromThreePoints(
+                        trajectory.CirclePoint1.Coordinates,
+                        trajectory.CirclePoint2.Coordinates,
+                        trajectory.CirclePoint3.Coordinates);
+
+                    if (circleParams.HasValue)
+                    {
+                        var (center, radius, normal) = circleParams.Value;
+                        // Now generate points using this center and radius
+                        List<Point> circlePoints = new List<Point>();
+
+                        // Need a local coordinate system on the circle's plane to generate points
+                        DxfVector localXAxis;
+                        double arbThreshold = 1.0 / 64.0;
+                        if (Math.Abs(normal.X) < arbThreshold && Math.Abs(normal.Y) < arbThreshold)
+                            localXAxis = (new DxfVector(0, 1, 0)).Cross(normal).Normalize();
+                        else
+                            localXAxis = (DxfVector.ZAxis).Cross(normal).Normalize();
+                        DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
+
+                        for (double angleDeg = 0; angleDeg < 360.0; angleDeg += TrajectoryPointResolutionAngle)
+                        {
+                            double angleRad = angleDeg * Math.PI / 180.0;
+                            DxfPoint pointOnCircle = center + radius * (localXAxis * Math.Cos(angleRad) + localYAxis * Math.Sin(angleRad));
+                            circlePoints.Add(new Point(pointOnCircle.X, pointOnCircle.Y)); // Assuming Z is handled by robot controller or constant
+                        }
+                        // Ensure the circle is closed if resolution doesn't perfectly land on start
+                        if (circlePoints.Count > 0)
+                        {
+                            DxfPoint firstDxfPoint = center + radius * localXAxis;
+                            Point firstPoint = new Point(firstDxfPoint.X, firstDxfPoint.Y);
+                            if (Point.Subtract(circlePoints.Last(), firstPoint).LengthSquared > 1e-6) // Check if last point is close to first
+                            {
+                                circlePoints.Add(firstPoint);
+                            }
+                        }
+                        trajectory.Points.AddRange(circlePoints);
+                        Debug.WriteLineIf(circlePoints.Count == 0, $"[WARNING] PopulateTrajectoryPoints (Circle): Generated 0 points for circle defined by P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Could not calculate circle parameters for trajectory. PrimitiveType: {trajectory.PrimitiveType}. Points P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
+                        // Fallback: Add the three defining points if circle calculation fails? Or leave empty?
+                        trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
+                        trajectory.Points.Add(new Point(trajectory.CirclePoint2.Coordinates.X, trajectory.CirclePoint2.Coordinates.Y));
+                        trajectory.Points.Add(new Point(trajectory.CirclePoint3.Coordinates.X, trajectory.CirclePoint3.Coordinates.Y));
+                        if(trajectory.Points.Count > 1) // Close it if it makes sense
+                           trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
+                    }
                     break;
                 default:
                     // For other types or if PrimitiveType is not set, Points will remain empty or could be populated from OriginalDxfEntity if needed
@@ -1086,20 +1136,41 @@ namespace RobTeach.Views
         {
             if (double.TryParse(CircleCenterZTextBox.Text, out double newZ))
             {
-                if (_trajectoryInDetailView.CircleCenter.Z != newZ)
+                bool changed = false;
+                if (_trajectoryInDetailView.CirclePoint1.Coordinates.Z != newZ)
                 {
-                    _trajectoryInDetailView.CircleCenter = new DxfPoint(
-                        _trajectoryInDetailView.CircleCenter.X,
-                        _trajectoryInDetailView.CircleCenter.Y,
-                        newZ);
+                    _trajectoryInDetailView.CirclePoint1.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.CirclePoint1.Coordinates.X,
+                        _trajectoryInDetailView.CirclePoint1.Coordinates.Y, newZ);
+                    changed = true;
+                }
+                if (_trajectoryInDetailView.CirclePoint2.Coordinates.Z != newZ) // Assuming co-planar change
+                {
+                    _trajectoryInDetailView.CirclePoint2.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.CirclePoint2.Coordinates.X,
+                        _trajectoryInDetailView.CirclePoint2.Coordinates.Y, newZ);
+                    changed = true;
+                }
+                if (_trajectoryInDetailView.CirclePoint3.Coordinates.Z != newZ) // Assuming co-planar change
+                {
+                    _trajectoryInDetailView.CirclePoint3.Coordinates = new DxfPoint(
+                        _trajectoryInDetailView.CirclePoint3.Coordinates.X,
+                        _trajectoryInDetailView.CirclePoint3.Coordinates.Y, newZ);
+                    changed = true;
+                }
+
+                if (changed)
+                {
                     isConfigurationDirty = true;
-                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString()
+                    PopulateTrajectoryPoints(_trajectoryInDetailView); // Regenerate points with new Z
+                    CurrentPassTrajectoriesListBox.Items.Refresh(); // Refresh if Z might be part of ToString() or if Points property affects display
                 }
             }
             else
             {
-                MessageBox.Show("Invalid Circle Center Z value. Please enter a valid number.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                CircleCenterZTextBox.Text = _trajectoryInDetailView.CircleCenter.Z.ToString("F3");
+                MessageBox.Show("Invalid Circle Z value. Please enter a valid number.", "Input Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                // Restore to P1's Z
+                CircleCenterZTextBox.Text = _trajectoryInDetailView.CirclePoint1.Coordinates.Z.ToString("F3");
             }
         }
     }
@@ -1425,9 +1496,43 @@ namespace RobTeach.Views
                             break;
                         case DxfCircle circle:
                             newTrajectory.PrimitiveType = "Circle";
-                            newTrajectory.CircleCenter = circle.Center;
-                            newTrajectory.CircleRadius = circle.Radius;
-                            newTrajectory.CircleNormal = circle.Normal;
+                            // newTrajectory.CircleCenter = circle.Center; // Replaced by 3 points
+                            // newTrajectory.CircleRadius = circle.Radius; // Replaced by 3 points
+                            // newTrajectory.CircleNormal = circle.Normal; // Will be derived from 3 points or stored if needed
+
+                            DxfVector normal = circle.Normal.Normalize();
+                            DxfPoint center = circle.Center;
+                            double radius = circle.Radius;
+
+                            DxfVector localXAxis;
+                            double arbThreshold = 1.0 / 64.0;
+
+                            if (Math.Abs(normal.X) < arbThreshold && Math.Abs(normal.Y) < arbThreshold)
+                            {
+                                localXAxis = (new DxfVector(0, 1, 0)).Cross(normal).Normalize();
+                            }
+                            else
+                            {
+                                localXAxis = (DxfVector.ZAxis).Cross(normal).Normalize();
+                            }
+                            DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
+
+                            // P1 at 0 degrees on the circle's plane
+                            newTrajectory.CirclePoint1.Coordinates = center + radius * localXAxis;
+
+                            // P2 at 120 degrees (2*PI/3 radians)
+                            double angle120 = 2.0 * Math.PI / 3.0;
+                            newTrajectory.CirclePoint2.Coordinates = center + radius * (localXAxis * Math.Cos(angle120) + localYAxis * Math.Sin(angle120));
+
+                            // P3 at 240 degrees (4*PI/3 radians)
+                            double angle240 = 4.0 * Math.PI / 3.0;
+                            newTrajectory.CirclePoint3.Coordinates = center + radius * (localXAxis * Math.Cos(angle240) + localYAxis * Math.Sin(angle240));
+
+                            // Ensure Z coordinates are consistent if derived from a 2D circle
+                            // For a true 3D circle, the Z values from above calculation are correct.
+                            // If the original DxfCircle was planar with Z=c.Z, then these points will share that Z.
+                            // No explicit Z adjustment needed here if calculations are correct.
+
                             break;
                         default:
                             newTrajectory.PrimitiveType = dxfEntity.GetType().Name;
@@ -2273,9 +2378,31 @@ namespace RobTeach.Views
                                     break;
                                 case DxfCircle circle:
                                     newTrajectory.PrimitiveType = "Circle";
-                                    newTrajectory.CircleCenter = circle.Center;
-                                    newTrajectory.CircleRadius = circle.Radius;
-                                    newTrajectory.CircleNormal = circle.Normal;
+                                    // newTrajectory.CircleCenter = circle.Center; // Replaced by 3 points
+                                    // newTrajectory.CircleRadius = circle.Radius; // Replaced by 3 points
+                                    // newTrajectory.CircleNormal = circle.Normal; // Will be derived
+
+                                    DxfVector marquee_normal = circle.Normal.Normalize();
+                                    DxfPoint marquee_center = circle.Center;
+                                    double marquee_radius = circle.Radius;
+                                    DxfVector marquee_localXAxis;
+                                    double marquee_arbThreshold = 1.0 / 64.0;
+
+                                    if (Math.Abs(marquee_normal.X) < marquee_arbThreshold && Math.Abs(marquee_normal.Y) < marquee_arbThreshold)
+                                    {
+                                        marquee_localXAxis = (new DxfVector(0, 1, 0)).Cross(marquee_normal).Normalize();
+                                    }
+                                    else
+                                    {
+                                        marquee_localXAxis = (DxfVector.ZAxis).Cross(marquee_normal).Normalize();
+                                    }
+                                    DxfVector marquee_localYAxis = marquee_normal.Cross(marquee_localXAxis).Normalize();
+
+                                    newTrajectory.CirclePoint1.Coordinates = marquee_center + marquee_radius * marquee_localXAxis;
+                                    double marquee_angle120 = 2.0 * Math.PI / 3.0;
+                                    newTrajectory.CirclePoint2.Coordinates = marquee_center + marquee_radius * (marquee_localXAxis * Math.Cos(marquee_angle120) + marquee_localYAxis * Math.Sin(marquee_angle120));
+                                    double marquee_angle240 = 4.0 * Math.PI / 3.0;
+                                    newTrajectory.CirclePoint3.Coordinates = marquee_center + marquee_radius * (marquee_localXAxis * Math.Cos(marquee_angle240) + marquee_localYAxis * Math.Sin(marquee_angle240));
                                     break;
                                 default:
                                     newTrajectory.PrimitiveType = hitDxfEntity.GetType().Name; // Fallback
