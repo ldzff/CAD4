@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using RobTeach.Models;
 using IxMilia.Dxf; // For DxfPoint and DxfVector
 using IxMilia.Dxf.Entities; // For DxfLine, DxfArc, DxfCircle etc.
+using RobTeach.Utils; // Added for GeometryUtils
 
 namespace RobTeach.Services
 {
@@ -143,6 +144,26 @@ namespace RobTeach.Services
                         // DxfArc parameters (center, radius, start/end angle), we could do it here.
                         // However, that calculation is non-trivial and might be better handled by specific geometric services if needed
                         // outside of reconciliation with an existing DXF document.
+                        // UPDATE: Attempt to reconstruct DxfArc using GeometryUtils
+                        if (trajectory.ArcPoint1 != null && trajectory.ArcPoint2 != null && trajectory.ArcPoint3 != null)
+                        {
+                            var arcParams = GeometryUtils.CalculateArcParametersFromThreePoints(
+                                trajectory.ArcPoint1.Coordinates,
+                                trajectory.ArcPoint2.Coordinates,
+                                trajectory.ArcPoint3.Coordinates);
+
+                            if (arcParams.HasValue)
+                            {
+                                trajectory.OriginalDxfEntity = new DxfArc(
+                                    arcParams.Value.Center,
+                                    arcParams.Value.Radius,
+                                    arcParams.Value.StartAngle,
+                                    arcParams.Value.EndAngle)
+                                {
+                                    Normal = arcParams.Value.Normal
+                                };
+                            }
+                        }
                         break;
                     case "Circle":
                         trajectory.OriginalDxfEntity = new DxfCircle(trajectory.CircleCenter, trajectory.CircleRadius)
