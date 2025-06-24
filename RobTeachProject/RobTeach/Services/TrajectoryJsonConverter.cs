@@ -108,6 +108,50 @@ namespace RobTeach.Services
                     trajectory.CircleRadius = GetDoubleProperty(root, "CircleRadius");
                     trajectory.CircleNormal = GetDxfVectorProperty(root, "CircleNormal", options);
                 }
+
+                // After all properties of Trajectory are deserialized,
+                // create and assign OriginalDxfEntity based on these properties.
+                switch (trajectory.PrimitiveType)
+                {
+                    case "Line":
+                        trajectory.OriginalDxfEntity = new DxfLine(trajectory.LineStartPoint, trajectory.LineEndPoint);
+                        break;
+                    case "Arc":
+                        trajectory.OriginalDxfEntity = new DxfArc(trajectory.ArcCenter, trajectory.ArcRadius, trajectory.ArcStartAngle, trajectory.ArcEndAngle)
+                        {
+                            Normal = trajectory.ArcNormal // Assuming DxfArc constructor doesn't take normal or it's settable
+                        };
+                        break;
+                    case "Circle":
+                        trajectory.OriginalDxfEntity = new DxfCircle(trajectory.CircleCenter, trajectory.CircleRadius)
+                        {
+                            Normal = trajectory.CircleNormal // Assuming DxfCircle constructor doesn't take normal or it's settable
+                        };
+                        break;
+                    case "LwPolyline": // Assuming LwPolyline data would be deserialized onto Trajectory if supported
+                        // This part needs LwPolyline specific properties on Trajectory object if we want to reconstruct it
+                        // For now, if PrimitiveType is LwPolyline, OriginalDxfEntity might remain null if not handled here
+                        // or if Trajectory class doesn't store LwPolyline vertices directly.
+                        // Based on current Trajectory model, it doesn't seem to store LwPolyline vertices.
+                        // So, for LwPolyline, OriginalDxfEntity reconstruction from Trajectory fields is not directly possible yet.
+                        // This will be a limitation until Trajectory model and this converter are extended for LwPolyline geo data.
+                        // For now, we'll leave it potentially null for LwPolyline from config if not handled by specific fields.
+                        // The reconciliation logic would then have to be very robust or have a fallback.
+                        // However, the goal is to have *some* DxfEntity.
+                        // Let's assume for now that if it's an LwPolyline, its specific points/bulges are not on Trajectory object directly.
+                        // This part of the plan (serializing LwPolyline specific data) needs to be addressed if LwPolyline highlighting from config is crucial.
+                        // For this step, we are focusing on Line, Arc, Circle for which Trajectory has direct fields.
+                        if (trajectory.OriginalDxfEntity == null && !string.IsNullOrEmpty(trajectory.EntityType)) // Check EntityType too
+                        {
+                             // Attempt a placeholder if it's an LwPolyline and we have no specific data on Trajectory model
+                             // This won't be geometrically accurate for reconciliation but makes it non-null.
+                             if (trajectory.EntityType == typeof(DxfLwPolyline).Name) {
+                                 // trajectory.OriginalDxfEntity = new DxfLwPolyline(); // Placeholder, not useful for matching.
+                                 // For now, we can't reconstruct LwPolyline from current Trajectory fields.
+                             }
+                        }
+                        break;
+                }
                 return trajectory;
             }
         }
