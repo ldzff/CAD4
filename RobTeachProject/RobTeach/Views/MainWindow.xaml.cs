@@ -1716,6 +1716,23 @@ namespace RobTeach.Views
                         ReconcileTrajectoryEntities(_currentConfiguration, _currentDxfDocument);
                     }
 
+                    // Populate points for all trajectories in the loaded configuration
+                    if (_currentConfiguration != null && _currentConfiguration.SprayPasses != null)
+                    {
+                        Debug.WriteLine("[JULES_DEBUG] Populating points for loaded trajectories.");
+                        foreach (var pass in _currentConfiguration.SprayPasses)
+                        {
+                            if (pass.Trajectories != null)
+                            {
+                                foreach (var trajectory in pass.Trajectories)
+                                {
+                                    PopulateTrajectoryPoints(trajectory);
+                                    Debug.WriteLine($"[JULES_DEBUG]   Populated points for: {trajectory.ToString()} - Point Count: {trajectory.Points.Count}");
+                                }
+                            }
+                        }
+                    }
+
                     UpdateSelectedTrajectoryDetailUI(); // Renamed: Update nozzle UI for potentially selected trajectory
                     RefreshCadCanvasHighlights(); // Update canvas highlights for the loaded pass
                     UpdateDirectionIndicator(); // Config loaded, selection might have changed
