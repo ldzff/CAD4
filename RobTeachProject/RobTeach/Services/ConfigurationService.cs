@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.Diagnostics; // For Debug.WriteLine
 using IxMilia.Dxf; // For DxfPoint, DxfVector
 using RobTeach.Models; // For Configuration
+using System.Linq; // Added for LINQ methods in temporary test code
 
 namespace RobTeach.Services
 {

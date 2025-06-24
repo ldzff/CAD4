@@ -102,6 +102,19 @@ namespace RobTeach.Services
                     // Deserialization of these new properties will be handled when the JSON format is updated for them.
                     // For now, to fix compile error, we don't read these old properties onto trajectory.
                     // The OriginalDxfEntity for Arc will also not be created from these non-existent trajectory fields here.
+                    // UPDATE: Deserialize ArcPoint1, ArcPoint2, ArcPoint3
+                    if (root.TryGetProperty("ArcPoint1", out JsonElement arcPoint1Element))
+                    {
+                        trajectory.ArcPoint1 = JsonSerializer.Deserialize<TrajectoryPointWithAngles>(arcPoint1Element.GetRawText(), options) ?? new TrajectoryPointWithAngles();
+                    }
+                    if (root.TryGetProperty("ArcPoint2", out JsonElement arcPoint2Element))
+                    {
+                        trajectory.ArcPoint2 = JsonSerializer.Deserialize<TrajectoryPointWithAngles>(arcPoint2Element.GetRawText(), options) ?? new TrajectoryPointWithAngles();
+                    }
+                    if (root.TryGetProperty("ArcPoint3", out JsonElement arcPoint3Element))
+                    {
+                        trajectory.ArcPoint3 = JsonSerializer.Deserialize<TrajectoryPointWithAngles>(arcPoint3Element.GetRawText(), options) ?? new TrajectoryPointWithAngles();
+                    }
                 }
                 else if (trajectory.PrimitiveType == "Circle")
                 {
@@ -123,6 +136,13 @@ namespace RobTeach.Services
                         // corresponds to a DxfArc selected by the user (in OnCadEntityClicked) which uses the new 3-point model,
                         // or during reconciliation if the JSON is updated to store 3-point data.
                         // For now, this fixes the compile error.
+                        // UPDATE: Attempt to reconstruct DxfArc if points are available
+                        // This is a simplified reconstruction. A robust one would calculate center, radius, angles from 3 points.
+                        // For now, we'll leave OriginalDxfEntity null here, as reconciliation is the primary way to get the live DxfArc.
+                        // If the 3 points were always guaranteed to form a valid arc that could be easily converted back to
+                        // DxfArc parameters (center, radius, start/end angle), we could do it here.
+                        // However, that calculation is non-trivial and might be better handled by specific geometric services if needed
+                        // outside of reconciliation with an existing DXF document.
                         break;
                     case "Circle":
                         trajectory.OriginalDxfEntity = new DxfCircle(trajectory.CircleCenter, trajectory.CircleRadius)
@@ -203,6 +223,13 @@ namespace RobTeach.Services
                     // in a later stage when this converter is fully updated for the new model.
                     // For now, to fix compile errors, we write no specific geometric data for "Arc" type.
                     // This means Arc geometry won't be persisted correctly in this interim state.
+                    // UPDATE: Serialize ArcPoint1, ArcPoint2, ArcPoint3
+                    writer.WritePropertyName("ArcPoint1");
+                    JsonSerializer.Serialize(writer, value.ArcPoint1, options);
+                    writer.WritePropertyName("ArcPoint2");
+                    JsonSerializer.Serialize(writer, value.ArcPoint2, options);
+                    writer.WritePropertyName("ArcPoint3");
+                    JsonSerializer.Serialize(writer, value.ArcPoint3, options);
                     break;
                 case "Circle":
                     writer.WritePropertyName("CircleCenter");
