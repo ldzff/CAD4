@@ -7,6 +7,12 @@ using System.Linq;
 
 namespace RobTeach.Services
 {
+    public record ModbusReadInt16Result(bool Success, short Value, string Message)
+    {
+        public static ModbusReadInt16Result Ok(short value, string message = "Read successful.") => new ModbusReadInt16Result(true, value, message);
+        public static ModbusReadInt16Result Fail(string message, short defaultValue = 0) => new ModbusReadInt16Result(false, defaultValue, message);
+    }
+
     /// <summary>
     /// Provides services for communicating with a Modbus TCP server (e.g., a robot controller).
     /// Handles connection, disconnection, and sending configuration data.
@@ -185,6 +191,56 @@ namespace RobTeach.Services
             {
                 Debug.WriteLine($"[ModbusService] General error during send: {ex.ToString()}");
                 return ModbusResponse.Fail($"An unexpected error occurred while sending Modbus data: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Reads a single 16-bit signed integer from a Modbus holding register.
+        /// </summary>
+        /// <param name="address">The Modbus address (0-based) of the holding register to read.</param>
+        /// <returns>A <see cref="ModbusReadInt16Result"/> containing the outcome of the read operation.</returns>
+        public ModbusReadInt16Result ReadHoldingRegisterInt16(ushort address)
+        {
+            if (!IsConnected)
+            {
+                return ModbusReadInt16Result.Fail("Error: Not connected to Modbus server.");
+            }
+
+            try
+            {
+                // Read one holding register. EasyModbus uses 0-based addressing for parameters if matching PLC,
+                // but the ReadHoldingRegisters function itself might expect standard Modbus (1-based for UI, 0-based for protocol).
+                // Assuming 'address' parameter is 0-based as per common Modbus library usage for actual register number.
+                // If the documentation meant address 1000 as seen in a Modbus tool (1-based), it would be register 999 (0-based).
+                // For now, we'll assume the passed 'address' is the correct 0-based register number.
+                int[] registers = modbusClient!.ReadHoldingRegisters(address, 1); // Read 1 register
+
+                if (registers != null && registers.Length == 1)
+                {
+                    // Modbus registers are 16-bit. An int from ReadHoldingRegisters is likely a .NET int (32-bit)
+                    // but holds a 16-bit value. We need to cast to short for signed 16-bit.
+                    short value = (short)registers[0];
+                    return ModbusReadInt16Result.Ok(value, $"Successfully read value {value} from address {address}.");
+                }
+                else
+                {
+                    return ModbusReadInt16Result.Fail($"Modbus read error: No data or unexpected data length received from address {address}.");
+                }
+            }
+            catch (System.IO.IOException ioEx)
+            {
+                 Debug.WriteLine($"[ModbusService] IO error during read from address {address}: {ioEx.ToString()}");
+                 return ModbusReadInt16Result.Fail($"IO error reading Modbus data from address {address}: {ioEx.Message}");
+            }
+            catch (EasyModbus.Exceptions.ModbusException modEx)
+            {
+                 Debug.WriteLine($"[ModbusService] Modbus protocol error during read from address {address}: {modEx.ToString()}");
+                 return ModbusReadInt16Result.Fail($"Modbus protocol error reading from address {address}: {modEx.Message}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[ModbusService] General error during read from address {address}: {ex.ToString()}");
+                return ModbusReadInt16Result.Fail($"An unexpected error occurred while reading Modbus data from address {address}: {ex.Message}");
             }
         }
     }

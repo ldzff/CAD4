@@ -2019,6 +2019,41 @@ namespace RobTeach.Views
                 return;
             }
 
+            // Step 1: Read robot status from Modbus address 1000
+            // Assuming address 1000 is the correct 0-based register index for the library.
+            // If it's 1-based in documentation, it should be 999 here. Using 1000 as per user request.
+            ushort robotStatusAddress = 1000;
+            ModbusReadInt16Result statusResult = _modbusService.ReadHoldingRegisterInt16(robotStatusAddress);
+
+            if (!statusResult.Success)
+            {
+                MessageBox.Show($"无法读取机械臂状态: {statusResult.Message}", "Modbus 读取失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            short robotStatus = statusResult.Value;
+            Debug.WriteLine($"[JULES_DEBUG] SendToRobotButton_Click: Robot status read from address {robotStatusAddress} = {robotStatus}");
+
+            // Step 2: Check robot status
+            if (robotStatus == 0)
+            {
+                MessageBox.Show("当前机械臂处于工作状态", "警告", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            else if (robotStatus == 2)
+            {
+                MessageBox.Show("当前机械臂错误", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            else if (robotStatus != 1) // Only proceed if status is 1
+            {
+                MessageBox.Show($"未知的机械臂状态: {robotStatus}", "状态未知", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // If status is 1, proceed with sending data.
+            Debug.WriteLine($"[JULES_DEBUG] SendToRobotButton_Click: Robot status is 1 (Ready). Proceeding to send configuration.");
+
             // Ensure points are populated for the trajectories in the current pass
             if (_currentConfiguration.CurrentPassIndex >= 0 &&
                 _currentConfiguration.CurrentPassIndex < _currentConfiguration.SprayPasses.Count)
