@@ -114,106 +114,70 @@ namespace RobTeach.Utils
         /// <param name="tolerance">Tolerance for floating point comparisons and collinearity checks.</param>
         /// <returns>A tuple (Center, Radius, Normal) or null if points are collinear or calculation fails.</returns>
         public static (DxfPoint Center, double Radius, DxfVector Normal)?
-            CalculateCircleCenterRadiusFromThreePoints(DxfPoint p1, DxfPoint p2, DxfPoint p3, double tolerance = 1e-6)
+            CalculateCircleCenterRadiusFromThreePoints(DxfPoint p1, DxfPoint p2, DxfPoint p3, double tolerance = 1e-9) // Using a slightly higher precision tolerance internally
         {
-            // Vectors from p1
-            DxfVector v12 = p2 - p1; // Vector from p1 to p2
-            DxfVector v13 = p3 - p1; // Vector from p1 to p3
+            DxfVector v12 = p2 - p1;
+            DxfVector v13 = p3 - p1;
 
-            // Normal vector to the plane defined by p1, p2, p3
-            // Normal = (P2-P1) x (P3-P1)
             DxfVector normal = v12.Cross(v13);
             double normalLengthSq = normal.LengthSquared;
 
-            if (normalLengthSq < tolerance * tolerance) // Points are collinear or coincident
+            if (normalLengthSq < tolerance * tolerance) // Points are collinear
             {
-                Debug.WriteLine("[GeometryUtils] CalculateCircleCenterRadiusFromThreePoints: Points are collinear or coincident.");
+                Debug.WriteLine($"[JULES_DEBUG] GeometryUtils.CalculateCircleCenterRadiusFromThreePoints: Points P1={p1}, P2={p2}, P3={p3} are collinear (normal vector zero or too small). normalLengthSq={normalLengthSq}");
                 return null;
             }
-            normal = normal.Normalize();
+            normal = normal.Normalize(); // Normalize for consistent direction
 
-            // Method using formulas for circumcenter.
-            // See: http://www.ambrsoft.com/TrigoCalc/Circle3D.htm (slightly different notation)
-            // or https://en.wikipedia.org/wiki/Circumscribed_circle#Cartesian_coordinates_from_cross-_and_dot-products
-            // Let a = p2-p1, b = p3-p1
-            // Center = p1 + [ (b^2 * a.a - a^2 * b.a) * a + (a^2 * b.b - b^2 * a.b) * b ] / (2 * |a x b|^2)
-            // This formula seems incorrect or misinterpreted from source.
+            // Using Eric Lengyel's formula for circumcenter of a 3D triangle (from "Mathematics for 3D Game Programming and Computer Graphics")
+            // Let p1, p2, p3 be the points.
+            // Define vectors from one point, e.g., ab = p2 - p1, ac = p3 - p1
+            DxfVector ab = p2 - p1;
+            DxfVector ac = p3 - p1;
 
-            // Using a more standard formula for circumcenter C for triangle vertices A, B, C (here p1, p2, p3)
-            // Let a = |P3-P2|, b = |P3-P1|, c = |P2-P1| (lengths of sides)
-            // This is for barycentric coordinates, which can be complex in 3D.
+            // Denominator part: 2 * |ab x ac|^2
+            // ab_cross_ac is normal * (some length scalar related to area*2)
+            // normalLengthSq = |ab x ac|^2
+            double denominator = 2.0 * normalLengthSq;
+            // Already checked normalLengthSq for being too small (collinearity)
 
-            // Let's use the intersection of perpendicular bisector planes method.
-            // Center C must satisfy:
-            // 1. Dot(C - (P1+P2)/2, P2-P1) = 0  (C is on perp. bisector plane of P1P2)
-            // 2. Dot(C - (P2+P3)/2, P3-P2) = 0  (C is on perp. bisector plane of P2P3)
-            // 3. Dot(C - P1, Normal) = 0         (C is on the plane of P1,P2,P3)
+            // Numerator part: ( |ac|^2 * (ab - ac)·ab * ab - |ab|^2 * (ac - ab)·ac * ac ) -- this is not Lengyel's formula directly
+            // Lengyel's formula: ( (ac * ab_sq - ab * ac_sq) X (ab X ac) ) / (2 * |ab X ac|^2) + p1
+            // where ab_sq = ab.LengthSquared, ac_sq = ac.LengthSquared
 
-            // This forms a system of 3 linear equations for (Cx, Cy, Cz).
-            // Eq1: (Cx - (x1+x2)/2)*(x2-x1) + (Cy - (y1+y2)/2)*(y2-y1) + (Cz - (z1+z2)/2)*(z2-z1) = 0
-            //      Cx*(x2-x1) + Cy*(y2-y1) + Cz*(z2-z1) = Dot((P1+P2)/2, P2-P1)
-            // Eq2: Cx*(x3-x2) + Cy*(y3-y2) + Cz*(z3-z2) = Dot((P2+P3)/2, P3-P2)
-            // Eq3: Cx*nx + Cy*ny + Cz*nz = Dot(P1, Normal)
+            DxfVector term1_vec = ac.Multiply(ab.LengthSquared);
+            DxfVector term2_vec = ab.Multiply(ac.LengthSquared);
+            DxfVector diff_terms = term1_vec - term2_vec; // This is (ac * |ab|^2 - ab * |ac|^2)
 
-            double v21x = p1.X - p2.X; double v21y = p1.Y - p2.Y; double v21z = p1.Z - p2.Z; // p1-p2
-            double v32x = p2.X - p3.X; double v32y = p2.Y - p3.Y; double v32z = p2.Z - p3.Z; // p2-p3
+            DxfVector ab_cross_ac_not_normalized = v12.Cross(v13); // This is the same as normal * Sqrt(normalLengthSq)
 
-            // Coefficients for the system Ax=B
-            // Row 1 (from bisector of P1P2)
-            double a11 = -2 * v21x;
-            double a12 = -2 * v21y;
-            double a13 = -2 * v21z;
-            double b1 = p1.X*p1.X - p2.X*p2.X + p1.Y*p1.Y - p2.Y*p2.Y + p1.Z*p1.Z - p2.Z*p2.Z;
+            DxfVector numerator_cross_product = diff_terms.Cross(ab_cross_ac_not_normalized);
 
-            // Row 2 (from bisector of P2P3)
-            double a21 = -2 * v32x;
-            double a22 = -2 * v32y;
-            double a23 = -2 * v32z;
-            double b2 = p2.X*p2.X - p3.X*p3.X + p2.Y*p2.Y - p3.Y*p3.Y + p2.Z*p2.Z - p3.Z*p3.Z;
-
-            // Row 3 (point on plane P1,P2,P3 passing through P1 with normal `normal`)
-            double a31 = normal.X;
-            double a32 = normal.Y;
-            double a33 = normal.Z;
-            double b3 = normal.X * p1.X + normal.Y * p1.Y + normal.Z * p1.Z;
-
-            // Solve using Cramer's rule or matrix inversion
-            double detA = a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31);
-
-            if (Math.Abs(detA) < tolerance * tolerance * tolerance) // Using a scaled tolerance for determinant
-            {
-                Debug.WriteLine("[GeometryUtils] CalculateCircleCenterRadiusFromThreePoints: Determinant is zero, cannot solve for center (possibly due to collinearity not caught earlier or numerical instability).");
-                return null;
-            }
-
-            // Cramer's rule for Cx, Cy, Cz
-            double detAx = b1*(a22*a33 - a23*a32) - a12*(b2*a33 - a23*b3) + a13*(b2*a32 - a22*b3);
-            double detAy = a11*(b2*a33 - a23*b3) - b1*(a21*a33 - a23*a31) + a13*(a21*b3 - b2*a31);
-            double detAz = a11*(a22*b3 - b2*a32) - a12*(a21*b3 - b2*a31) + b1*(a21*a32 - a22*a31);
-
-            double centerX = detAx / detA;
-            double centerY = detAy / detA;
-            double centerZ = detAz / detA;
-
-            DxfPoint center = new DxfPoint(centerX, centerY, centerZ);
+            DxfPoint center = p1 + numerator_cross_product.Divide(denominator);
             double radius = (p1 - center).Length;
 
-            if (radius < tolerance)
+            if (radius < tolerance) // Or some other check if radius is unreasonably small
             {
-                Debug.WriteLine("[GeometryUtils] CalculateCircleCenterRadiusFromThreePoints: Calculated radius is too small.");
+                Debug.WriteLine($"[JULES_DEBUG] GeometryUtils.CalculateCircleCenterRadiusFromThreePoints: Calculated radius {radius} is too small. P1={p1}, P2={p2}, P3={p3}. Center={center}");
                 return null;
             }
 
-            // Verify that p2 and p3 are also equidistant (within tolerance)
-            if (Math.Abs((p2 - center).Length - radius) > tolerance || Math.Abs((p3 - center).Length - radius) > tolerance)
+            // Sanity check if other points are equidistant (using a relative tolerance based on radius)
+            double relTol = radius * 0.001; // 0.1% relative tolerance
+            if (Math.Abs((p2 - center).Length - radius) > relTol ||
+                Math.Abs((p3 - center).Length - radius) > relTol)
             {
-                Debug.WriteLine("[WARNING] CalculateCircleCenterRadiusFromThreePoints: Points are not equidistant from calculated center. Check math or input points. P1-C: " + (p1-center).Length + ", P2-C: " + (p2-center).Length + ", P3-C: " + (p3-center).Length + ", R: " + radius );
-                // This could indicate a problem with the input points (e.g. not truly on a circle) or numerical precision issues.
-                // Depending on strictness, might return null or proceed with calculated values.
-                // For now, proceed.
+                Debug.WriteLine($"[JULES_WARNING] GeometryUtils.CalculateCircleCenterRadiusFromThreePoints: Points not perfectly equidistant from calculated center. This might indicate input points are not truly on a circle or numerical precision limits.\n" +
+                                $"P1={p1}, P2={p2}, P3={p3}\n" +
+                                $"Center={center}, Radius={radius}\n" +
+                                $"Dist P1-C: {(p1-center).Length}\n" +
+                                $"Dist P2-C: {(p2-center).Length}\n" +
+                                $"Dist P3-C: {(p3-center).Length}");
+                // Depending on strictness, one might return null here.
+                // For now, we proceed, as the calculation itself is standard.
             }
 
-            Debug.WriteLine($"[GeometryUtils] CircleParams: Center={center}, R={radius}, Normal={normal}");
+            Debug.WriteLine($"[JULES_DEBUG] GeometryUtils.CalculateCircleCenterRadiusFromThreePoints: P1={p1}, P2={p2}, P3={p3} -> Center={center}, Radius={radius}, Normal={normal}");
             return (center, radius, normal);
         }
     }

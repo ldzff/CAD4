@@ -303,9 +303,11 @@ namespace RobTeach.Views
             for (int i = 0; i < currentPassTrajectories.Count; i++)
             {
                 var selectedTrajectory = currentPassTrajectories[i];
+                Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: Checking Trajectory - Type: {selectedTrajectory.PrimitiveType}, Points Count: {(selectedTrajectory.Points?.Count ?? -1)}, Index: {i}");
 
                 if (selectedTrajectory.Points == null || !selectedTrajectory.Points.Any())
                 {
+                    Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: SKIPPING label for Trajectory - Type: {selectedTrajectory.PrimitiveType}, Index: {i} due to no/empty points.");
                     continue; // Skip if no points to base position on
                 }
 
@@ -337,6 +339,7 @@ namespace RobTeach.Views
                 double offsetX = 5;  // Offset to the right of the anchor point
                 double offsetY = -15; // Offset above the anchor point (FontSize is 10, Padding makes it taller)
 
+                Debug.WriteLine($"[JULES_DEBUG] UpdateOrderNumberLabels: Creating label for Trajectory - Type: {selectedTrajectory.PrimitiveType}, Index: {i}, Anchor: {anchorPoint}");
                 Canvas.SetLeft(orderLabel, anchorPoint.X + offsetX);
                 Canvas.SetTop(orderLabel, anchorPoint.Y + offsetY);
                 Panel.SetZIndex(orderLabel, 100); // Ensure labels are on top
@@ -838,7 +841,7 @@ namespace RobTeach.Views
                     }
                     break;
                 case "Circle":
-                    // trajectory.Points.AddRange(_cadService.ConvertCircleTrajectoryToPoints(trajectory, TrajectoryPointResolutionAngle)); // Old way
+                    Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Input P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
                     var circleParams = GeometryUtils.CalculateCircleCenterRadiusFromThreePoints(
                         trajectory.CirclePoint1.Coordinates,
                         trajectory.CirclePoint2.Coordinates,
@@ -847,10 +850,9 @@ namespace RobTeach.Views
                     if (circleParams.HasValue)
                     {
                         var (center, radius, normal) = circleParams.Value;
-                        // Now generate points using this center and radius
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Calculated Params: Center={center}, Radius={radius}, Normal={normal}");
                         List<Point> circlePoints = new List<Point>();
 
-                        // Need a local coordinate system on the circle's plane to generate points
                         DxfVector localXAxis;
                         double arbThreshold = 1.0 / 64.0;
                         if (Math.Abs(normal.X) < arbThreshold && Math.Abs(normal.Y) < arbThreshold)
@@ -858,37 +860,47 @@ namespace RobTeach.Views
                         else
                             localXAxis = (DxfVector.ZAxis).Cross(normal).Normalize();
                         DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): ResolutionAngle={TrajectoryPointResolutionAngle}, LocalX={localXAxis}, LocalY={localYAxis}");
 
                         for (double angleDeg = 0; angleDeg < 360.0; angleDeg += TrajectoryPointResolutionAngle)
                         {
                             double angleRad = angleDeg * Math.PI / 180.0;
                             DxfVector directionOnPlane = (localXAxis * Math.Cos(angleRad)) + (localYAxis * Math.Sin(angleRad));
                             DxfPoint pointOnCircle = center + (directionOnPlane * radius);
-                            circlePoints.Add(new Point(pointOnCircle.X, pointOnCircle.Y)); // Assuming Z is handled by robot controller or constant
+                            circlePoints.Add(new Point(pointOnCircle.X, pointOnCircle.Y));
+                            Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): angleDeg={angleDeg}, pointOnCircle={pointOnCircle}, Added to circlePoints. Count: {circlePoints.Count}");
                         }
-                        // Ensure the circle is closed if resolution doesn't perfectly land on start
+
                         if (circlePoints.Count > 0)
                         {
                             DxfPoint firstDxfPoint = center + (localXAxis * radius);
                             Point firstPoint = new Point(firstDxfPoint.X, firstDxfPoint.Y);
-                            if (Point.Subtract(circlePoints.Last(), firstPoint).LengthSquared > 1e-6) // Check if last point is close to first
+                            if (Point.Subtract(circlePoints.Last(), firstPoint).LengthSquared > 1e-6)
                             {
                                 circlePoints.Add(firstPoint);
+                                Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Added closing point. Count: {circlePoints.Count}");
                             }
                         }
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Total points generated before AddRange: {circlePoints.Count}");
                         trajectory.Points.AddRange(circlePoints);
-                        Debug.WriteLineIf(circlePoints.Count == 0, $"[WARNING] PopulateTrajectoryPoints (Circle): Generated 0 points for circle defined by P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
+                        Debug.WriteLineIf(circlePoints.Count == 0, $"[JULES_WARNING] PopulateTrajectoryPoints (Circle): Generated 0 points for circle P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
                     }
                     else
                     {
-                        Debug.WriteLine($"[WARNING] PopulateTrajectoryPoints: Could not calculate circle parameters for trajectory. PrimitiveType: {trajectory.PrimitiveType}. Points P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
-                        // Fallback: Add the three defining points if circle calculation fails? Or leave empty?
+                        Debug.WriteLine($"[JULES_WARNING] PopulateTrajectoryPoints (Circle): Could not calculate circle parameters. Fallback to 3 points. P1={trajectory.CirclePoint1.Coordinates}, P2={trajectory.CirclePoint2.Coordinates}, P3={trajectory.CirclePoint3.Coordinates}");
                         trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P1. Points count: {trajectory.Points.Count}");
                         trajectory.Points.Add(new Point(trajectory.CirclePoint2.Coordinates.X, trajectory.CirclePoint2.Coordinates.Y));
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P2. Points count: {trajectory.Points.Count}");
                         trajectory.Points.Add(new Point(trajectory.CirclePoint3.Coordinates.X, trajectory.CirclePoint3.Coordinates.Y));
-                        if(trajectory.Points.Count > 1) // Close it if it makes sense
+                        Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Added P3. Points count: {trajectory.Points.Count}");
+                        if(trajectory.Points.Count > 1)
+                        {
                            trajectory.Points.Add(new Point(trajectory.CirclePoint1.Coordinates.X, trajectory.CirclePoint1.Coordinates.Y));
+                           Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle Fallback): Closed with P1. Points count: {trajectory.Points.Count}");
+                        }
                     }
+                    Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): Final trajectory.Points.Count = {trajectory.Points.Count}");
                     break;
                 default:
                     // For other types or if PrimitiveType is not set, Points will remain empty or could be populated from OriginalDxfEntity if needed
