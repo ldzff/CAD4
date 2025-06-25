@@ -144,16 +144,23 @@ namespace RobTeach.Utils
             // Numerator part: ( |ac|^2 * (ab - ac)·ab * ab - |ab|^2 * (ac - ab)·ac * ac ) -- this is not Lengyel's formula directly
             // Lengyel's formula: ( (ac * ab_sq - ab * ac_sq) X (ab X ac) ) / (2 * |ab X ac|^2) + p1
             // where ab_sq = ab.LengthSquared, ac_sq = ac.LengthSquared
+            double ab_len_sq = ab.LengthSquared;
+            double ac_len_sq = ac.LengthSquared;
 
-            DxfVector term1_vec = ac.Multiply(ab.LengthSquared);
-            DxfVector term2_vec = ab.Multiply(ac.LengthSquared);
+            DxfVector term1_vec = new DxfVector(ac.X * ab_len_sq, ac.Y * ab_len_sq, ac.Z * ab_len_sq);
+            DxfVector term2_vec = new DxfVector(ab.X * ac_len_sq, ab.Y * ac_len_sq, ab.Z * ac_len_sq);
             DxfVector diff_terms = term1_vec - term2_vec; // This is (ac * |ab|^2 - ab * |ac|^2)
 
             DxfVector ab_cross_ac_not_normalized = v12.Cross(v13); // This is the same as normal * Sqrt(normalLengthSq)
 
             DxfVector numerator_cross_product = diff_terms.Cross(ab_cross_ac_not_normalized);
 
-            DxfPoint center = p1 + numerator_cross_product.Divide(denominator);
+            // Ensure denominator is not zero before division (already checked by normalLengthSq check earlier)
+            DxfVector scaled_numerator_cross_product = new DxfVector(
+                numerator_cross_product.X / denominator,
+                numerator_cross_product.Y / denominator,
+                numerator_cross_product.Z / denominator);
+            DxfPoint center = p1 + scaled_numerator_cross_product;
             double radius = (p1 - center).Length;
 
             if (radius < tolerance) // Or some other check if radius is unreasonably small

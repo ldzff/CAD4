@@ -865,15 +865,19 @@ namespace RobTeach.Views
                         for (double angleDeg = 0; angleDeg < 360.0; angleDeg += TrajectoryPointResolutionAngle)
                         {
                             double angleRad = angleDeg * Math.PI / 180.0;
-                            DxfVector directionOnPlane = (localXAxis * Math.Cos(angleRad)) + (localYAxis * Math.Sin(angleRad));
-                            DxfPoint pointOnCircle = center + (directionOnPlane * radius);
+                            double cosAngle = Math.Cos(angleRad);
+                            double sinAngle = Math.Sin(angleRad);
+                            DxfVector termX = new DxfVector(localXAxis.X * cosAngle, localXAxis.Y * cosAngle, localXAxis.Z * cosAngle);
+                            DxfVector termY = new DxfVector(localYAxis.X * sinAngle, localYAxis.Y * sinAngle, localYAxis.Z * sinAngle);
+                            DxfVector directionOnPlane_unscaled = termX + termY; // Assuming DxfVector + DxfVector is okay
+                            DxfPoint pointOnCircle = center + new DxfVector(directionOnPlane_unscaled.X * radius, directionOnPlane_unscaled.Y * radius, directionOnPlane_unscaled.Z * radius);
                             circlePoints.Add(new Point(pointOnCircle.X, pointOnCircle.Y));
                             Debug.WriteLine($"[JULES_DEBUG] PopulateTrajectoryPoints (Circle): angleDeg={angleDeg}, pointOnCircle={pointOnCircle}, Added to circlePoints. Count: {circlePoints.Count}");
                         }
 
                         if (circlePoints.Count > 0)
                         {
-                            DxfPoint firstDxfPoint = center + (localXAxis * radius);
+                            DxfPoint firstDxfPoint = center + new DxfVector(localXAxis.X * radius, localXAxis.Y * radius, localXAxis.Z * radius);
                             Point firstPoint = new Point(firstDxfPoint.X, firstDxfPoint.Y);
                             if (Point.Subtract(circlePoints.Last(), firstPoint).LengthSquared > 1e-6)
                             {
@@ -1531,17 +1535,28 @@ namespace RobTeach.Views
                             DxfVector localYAxis = normal.Cross(localXAxis).Normalize();
 
                             // P1 at 0 degrees on the circle's plane
-                            newTrajectory.CirclePoint1.Coordinates = center + (localXAxis * radius);
+                            newTrajectory.CirclePoint1.Coordinates = new DxfPoint(
+                                center.X + localXAxis.X * radius,
+                                center.Y + localXAxis.Y * radius,
+                                center.Z + localXAxis.Z * radius);
 
                             // P2 at 120 degrees (2*PI/3 radians)
                             double angle120 = 2.0 * Math.PI / 3.0;
-                            DxfVector dirP2 = (localXAxis * Math.Cos(angle120)) + (localYAxis * Math.Sin(angle120));
-                            newTrajectory.CirclePoint2.Coordinates = center + (dirP2 * radius);
+                            double cos120 = Math.Cos(angle120);
+                            double sin120 = Math.Sin(angle120);
+                            newTrajectory.CirclePoint2.Coordinates = new DxfPoint(
+                                center.X + (localXAxis.X * cos120 + localYAxis.X * sin120) * radius,
+                                center.Y + (localXAxis.Y * cos120 + localYAxis.Y * sin120) * radius,
+                                center.Z + (localXAxis.Z * cos120 + localYAxis.Z * sin120) * radius);
 
                             // P3 at 240 degrees (4*PI/3 radians)
                             double angle240 = 4.0 * Math.PI / 3.0;
-                            DxfVector dirP3 = (localXAxis * Math.Cos(angle240)) + (localYAxis * Math.Sin(angle240));
-                            newTrajectory.CirclePoint3.Coordinates = center + (dirP3 * radius);
+                            double cos240 = Math.Cos(angle240);
+                            double sin240 = Math.Sin(angle240);
+                            newTrajectory.CirclePoint3.Coordinates = new DxfPoint(
+                                center.X + (localXAxis.X * cos240 + localYAxis.X * sin240) * radius,
+                                center.Y + (localXAxis.Y * cos240 + localYAxis.Y * sin240) * radius,
+                                center.Z + (localXAxis.Z * cos240 + localYAxis.Z * sin240) * radius);
 
                             // Store original parameters as well
                             newTrajectory.OriginalCircleCenter = center;
@@ -2418,15 +2433,34 @@ namespace RobTeach.Views
                                     }
                                     DxfVector marquee_localYAxis = marquee_normal.Cross(marquee_localXAxis).Normalize();
 
-                                    newTrajectory.CirclePoint1.Coordinates = marquee_center + (marquee_localXAxis * marquee_radius);
+                                    newTrajectory.CirclePoint1.Coordinates = new DxfPoint(
+                                        marquee_center.X + marquee_localXAxis.X * marquee_radius,
+                                        marquee_center.Y + marquee_localXAxis.Y * marquee_radius,
+                                        marquee_center.Z + marquee_localXAxis.Z * marquee_radius);
 
                                     double marquee_angle120 = 2.0 * Math.PI / 3.0;
-                                    DxfVector marquee_dirP2 = (marquee_localXAxis * Math.Cos(marquee_angle120)) + (marquee_localYAxis * Math.Sin(marquee_angle120));
-                                    newTrajectory.CirclePoint2.Coordinates = marquee_center + (marquee_dirP2 * marquee_radius);
+                                    double marquee_cos120 = Math.Cos(marquee_angle120);
+                                    double marquee_sin120 = Math.Sin(marquee_angle120);
+                                    DxfVector marquee_dirP2_unscaled = new DxfVector(
+                                        marquee_localXAxis.X * marquee_cos120 + marquee_localYAxis.X * marquee_sin120,
+                                        marquee_localXAxis.Y * marquee_cos120 + marquee_localYAxis.Y * marquee_sin120,
+                                        marquee_localXAxis.Z * marquee_cos120 + marquee_localYAxis.Z * marquee_sin120);
+                                    newTrajectory.CirclePoint2.Coordinates = new DxfPoint(
+                                        marquee_center.X + marquee_dirP2_unscaled.X * marquee_radius,
+                                        marquee_center.Y + marquee_dirP2_unscaled.Y * marquee_radius,
+                                        marquee_center.Z + marquee_dirP2_unscaled.Z * marquee_radius);
 
                                     double marquee_angle240 = 4.0 * Math.PI / 3.0;
-                                    DxfVector marquee_dirP3 = (marquee_localXAxis * Math.Cos(marquee_angle240)) + (marquee_localYAxis * Math.Sin(marquee_angle240));
-                                    newTrajectory.CirclePoint3.Coordinates = marquee_center + (marquee_dirP3 * marquee_radius);
+                                    double marquee_cos240 = Math.Cos(marquee_angle240);
+                                    double marquee_sin240 = Math.Sin(marquee_angle240);
+                                    DxfVector marquee_dirP3_unscaled = new DxfVector(
+                                        marquee_localXAxis.X * marquee_cos240 + marquee_localYAxis.X * marquee_sin240,
+                                        marquee_localXAxis.Y * marquee_cos240 + marquee_localYAxis.Y * marquee_sin240,
+                                        marquee_localXAxis.Z * marquee_cos240 + marquee_localYAxis.Z * marquee_sin240);
+                                    newTrajectory.CirclePoint3.Coordinates = new DxfPoint(
+                                        marquee_center.X + marquee_dirP3_unscaled.X * marquee_radius,
+                                        marquee_center.Y + marquee_dirP3_unscaled.Y * marquee_radius,
+                                        marquee_center.Z + marquee_dirP3_unscaled.Z * marquee_radius);
 
                                     // Store original parameters as well
                                     newTrajectory.OriginalCircleCenter = marquee_center;
